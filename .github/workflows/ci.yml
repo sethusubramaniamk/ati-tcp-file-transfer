@@ -1,0 +1,102 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    name: linux-x64 / ${{ matrix.preset }}
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        preset: [release, debug, asan]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+              build-essential ninja-build cmake pkg-config \
+              libssl-dev clang-format clang-tidy lld
+
+      - name: Cache CMake artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/ccache
+            build/${{ matrix.preset }}/_deps
+          key: ${{ runner.os }}-${{ matrix.preset }}-cmake-${{ hashFiles('CMakeLists.txt', 'third_party/CMakeLists.txt', 'CMakePresets.json') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.preset }}-cmake-
+
+      - name: Configure
+        run: cmake --preset ${{ matrix.preset }}
+
+      - name: Build
+        run: cmake --build --preset ${{ matrix.preset }} --parallel
+
+      - name: Test
+        run: ctest --preset ${{ matrix.preset }} --output-on-failure
+
+  warnings-as-errors:
+    name: linux-x64 / -Werror
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+              build-essential ninja-build cmake pkg-config libssl-dev
+
+      - name: Configure (-Werror)
+        run: cmake --preset release-strict
+
+      - name: Build (-Werror)
+        run: cmake --build --preset release-strict --parallel
+
+      - name: Test
+        run: ctest --preset release --output-on-failure || true
+        # release tests already run in matrix above; this job is purely
+        # a "does the project compile clean under -Werror" gate.
+
+  cross-aarch64:
+    name: linux-aarch64 / cross-compile (build only)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install cross toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+              build-essential ninja-build cmake pkg-config \
+              gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
+              libssl-dev:arm64 || true
+          # The libssl-dev:arm64 package requires multiarch — fall back to
+          # installing the host libssl-dev only and skipping TLS code path
+          # for the cross build if multiarch isn't available.
+          sudo dpkg --add-architecture arm64 || true
+          sudo apt-get update || true
+          sudo apt-get install -y libssl-dev:arm64 || \
+              echo "::warning::libssl-dev:arm64 unavailable, OpenSSL features won't link"
+
+      - name: Configure
+        run: cmake -S . -B build/cross-aarch64 -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE=$PWD/cmake/toolchains/aarch64-linux-gnu.cmake \
+            -DFTX_BUILD_TESTS=OFF
+
+      - name: Build
+        run: cmake --build build/cross-aarch64 --parallel
+
+      - name: Show binary architecture
+        run: |
+          file build/cross-aarch64/src/ftx
