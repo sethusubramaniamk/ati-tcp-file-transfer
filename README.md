@@ -18,13 +18,13 @@ A production-grade C++20 utility for transferring files of arbitrary size over T
 
 ## Quick start
 
-| Platform | Toolchain | OpenSSL | Notes |
+| Platform | Toolchain | OpenSSL | Validated |
 | --- | --- | --- | --- |
-| **Linux (Ubuntu/Debian)** | `apt install build-essential ninja-build cmake pkg-config libssl-dev` | distro package | primary platform |
-| **Linux (Fedora/RHEL)** | `dnf install gcc-c++ ninja-build cmake openssl-devel` | distro package | |
-| **macOS** | `brew install ninja cmake openssl@3 pkg-config` | Homebrew (keg-only — see below) | |
-| **Windows native** | Visual Studio 2022 Build Tools (MSVC + Windows SDK) + CMake + Ninja | `vcpkg install openssl:x64-windows` | Developer Command Prompt or Developer PowerShell |
-| **Windows via WSL** | Same as Linux (Ubuntu) | distro package | easiest if WSL2 is already installed |
+| **Linux (Ubuntu/Debian)** | `apt install build-essential ninja-build cmake pkg-config libssl-dev` | distro package | ✅ primary; full suite + ASan/UBSan + 16 GiB e2e |
+| **Linux (Fedora/RHEL)** | `dnf install gcc-c++ ninja-build cmake openssl-devel` | distro package | code-portable; CI matrix |
+| **macOS** | `brew install ninja cmake openssl@3 pkg-config` | Homebrew (keg-only — see below) | code-portable; CI matrix |
+| **Windows native** (MSVC) | Visual Studio 2022 Build Tools + CMake + Ninja + Git | `vcpkg install openssl:x64-windows` | ✅ MSVC 19.44 + OpenSSL 3.6.2, **63/63 tests green locally** |
+| **Windows via WSL** | Same as Linux (Ubuntu) | distro package | ✅ via the Linux path |
 
 ### Linux / WSL
 

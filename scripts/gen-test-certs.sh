@@ -4,6 +4,12 @@
 # experimentation. NEVER use these for anything but local testing.
 set -euo pipefail
 
+# Disable MSYS/Cygwin path translation when this script runs under Git Bash
+# on Windows — otherwise OpenSSL's `/CN=...` subject gets mangled into a
+# Windows filesystem path. Harmless on Linux/macOS.
+export MSYS_NO_PATHCONV=1
+export MSYS2_ARG_CONV_EXCL='*'
+
 OUT_DIR="${1:-certs}"
 mkdir -p "$OUT_DIR"
 cd "$OUT_DIR"

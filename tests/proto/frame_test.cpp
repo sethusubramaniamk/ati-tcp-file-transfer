@@ -140,7 +140,7 @@ TEST(EncodeFrame, ThrowsOnOversizedPayload) {
     // Cleaner: actually allocate an oversized payload? That'd waste memory in
     // tests. Use the documented contract: encode_frame throws on >max.
     std::vector<std::byte> too_big(kDefaultMaxPayload + 1, std::byte{0});
-    EXPECT_THROW(encode_frame(FrameType::Chunk, too_big), std::invalid_argument);
+    EXPECT_THROW({ (void)encode_frame(FrameType::Chunk, too_big); }, std::invalid_argument);
 }
 
 }  // namespace
