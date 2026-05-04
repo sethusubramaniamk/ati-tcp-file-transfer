@@ -7,6 +7,12 @@ add_library(ftx_lib STATIC
     lib/proto/types.cpp
     lib/proto/frame.cpp
     lib/proto/decoder.cpp
+    lib/proto/messages.cpp
+    lib/io/file_source.cpp
+    lib/io/file_sink.cpp
+    lib/transport/connection.cpp
+    lib/transport/server.cpp
+    lib/transport/client.cpp
 )
 
 target_include_directories(ftx_lib
@@ -17,6 +23,7 @@ target_include_directories(ftx_lib
 target_link_libraries(ftx_lib
     PUBLIC
         spdlog::spdlog
+        asio
     PRIVATE
         ftx_warnings
         ftx_sanitizers
