@@ -45,8 +45,8 @@ jobs:
         run: ctest --preset ${{ matrix.preset }} --output-on-failure
 
   macos:
-    name: macos-13 / release
-    runs-on: macos-13
+    name: macos / release
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
 
