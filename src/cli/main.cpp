@@ -34,6 +34,7 @@ struct SendOpts {
     std::string   remote;
     std::string   source;
     std::string   out;
+    uint32_t      chunk_size = 1u * 1024 * 1024;
     CommonTlsArgs tls;
 };
 
@@ -133,8 +134,9 @@ int run_send(const SendOpts& o) {
                                         ? src.filename().generic_string()
                                         : o.out;
 
-    asio::io_context           io;
+    asio::io_context              io;
     ftx::transport::ClientOptions opts;
+    opts.chunk_size = o.chunk_size;
     if (!o.tls.insecure) {
         auto tls = build_tls_config(o.tls, /*is_server=*/false);
         if (!tls) return 2;
@@ -173,6 +175,8 @@ int main(int argc, char** argv) {
     send->add_option("source", send_opts.source, "local file to send")->required();
     send->add_option("--out", send_opts.out,
                      "remote destination path (default: source filename)");
+    send->add_option("--chunk-size", send_opts.chunk_size,
+                     "chunk size in bytes (default 1 MiB)")->capture_default_str();
     add_tls_options(send, send_opts.tls);
 
     app.require_subcommand(1);

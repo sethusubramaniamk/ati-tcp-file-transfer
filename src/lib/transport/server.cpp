@@ -4,6 +4,7 @@
 
 #include <fstream>
 #include <system_error>
+#include <thread>
 #include <vector>
 
 #include "ftx/io/file_sink.hpp"
@@ -89,7 +90,14 @@ void Server::run() {
             spdlog::error("accept failed: {}", ec.message());
             continue;
         }
-        (void)handle_session_(std::move(socket));
+        // Thread-per-session. Parallel-streams-per-single-file requires a
+        // session-token protocol extension and a per-destination lock around
+        // .ftxstate updates; that extension is described in DESIGN.md and is
+        // not yet implemented. Concurrent transfers of *different* files are
+        // already supported here.
+        std::thread([this, sock = std::move(socket)]() mutable {
+            (void)handle_session_(std::move(sock));
+        }).detach();
     }
 }
 
