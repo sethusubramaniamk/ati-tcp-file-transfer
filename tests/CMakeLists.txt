@@ -53,6 +53,7 @@ add_custom_target(ftx_test_certs DEPENDS ${FTX_TEST_CERTS})
 add_executable(ftx_integration_tests
     transport/loopback_test.cpp
     transport/tls_loopback_test.cpp
+    transport/large_transfer_test.cpp
 )
 
 add_dependencies(ftx_integration_tests ftx_test_certs)

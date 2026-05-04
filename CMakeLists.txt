@@ -103,6 +103,10 @@ if(FTX_BUILD_TESTS)
     add_subdirectory(tests)
 endif()
 
+if(FTX_BUILD_BENCH)
+    add_subdirectory(bench)
+endif()
+
 # ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------

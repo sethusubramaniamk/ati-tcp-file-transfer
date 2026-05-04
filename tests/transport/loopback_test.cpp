@@ -123,7 +123,8 @@ INSTANTIATE_TEST_SUITE_P(Sizes, Loopback,
                                                      256 * 1024,  // exactly one chunk
                                                      257 * 1024,  // two chunks, last short
                                                      1024 * 1024,
-                                                     1024 * 1024 + 7));
+                                                     1024 * 1024 + 7,
+                                                     64ull * 1024 * 1024));  // 64 MiB
 
 TEST(Loopback, RejectsPathTraversal) {
     const auto       work = make_unique_temp_dir("traversal");
