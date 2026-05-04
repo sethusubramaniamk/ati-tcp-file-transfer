@@ -1,11 +1,11 @@
 #include "ftx/transport/server.hpp"
 
-#include <spdlog/spdlog.h>
-
 #include <fstream>
 #include <system_error>
 #include <thread>
 #include <vector>
+
+#include <spdlog/spdlog.h>
 
 #include "ftx/io/file_sink.hpp"
 #include "ftx/io/resume_state.hpp"
@@ -20,11 +20,14 @@ namespace {
 // Reject paths that are absolute, contain ".." segments, or end up outside
 // the configured root directory.
 bool is_path_safe(const std::string& rel) {
-    if (rel.empty()) return false;
+    if (rel.empty())
+        return false;
     const std::filesystem::path p(rel);
-    if (p.is_absolute()) return false;
+    if (p.is_absolute())
+        return false;
     for (const auto& part : p) {
-        if (part == "..") return false;
+        if (part == "..")
+            return false;
     }
     return true;
 }
@@ -46,9 +49,7 @@ void Server::open_acceptor_(const asio::ip::tcp::endpoint& endpoint) {
 Server::Server(asio::io_context& io,
                const asio::ip::tcp::endpoint& endpoint,
                std::filesystem::path root)
-    : io_(io),
-      acceptor_(io),
-      root_(std::move(root)) {
+    : io_(io), acceptor_(io), root_(std::move(root)) {
     std::error_code ec;
     std::filesystem::create_directories(root_, ec);  // best-effort
     open_acceptor_(endpoint);
@@ -58,10 +59,7 @@ Server::Server(asio::io_context& io,
                const asio::ip::tcp::endpoint& endpoint,
                std::filesystem::path root,
                TlsConfig tls)
-    : io_(io),
-      acceptor_(io),
-      root_(std::move(root)),
-      ssl_ctx_(make_server_tls_context(tls)) {
+    : io_(io), acceptor_(io), root_(std::move(root)), ssl_ctx_(make_server_tls_context(tls)) {
     std::error_code ec;
     std::filesystem::create_directories(root_, ec);
     open_acceptor_(endpoint);
@@ -86,7 +84,8 @@ void Server::run() {
         asio::error_code ec;
         auto socket = acceptor_.accept(ec);
         if (ec) {
-            if (stop_flag_.load(std::memory_order_relaxed)) break;
+            if (stop_flag_.load(std::memory_order_relaxed))
+                break;
             spdlog::error("accept failed: {}", ec.message());
             continue;
         }
@@ -107,25 +106,24 @@ void Server::stop() {
     acceptor_.close(ec);
 }
 
-bool Server::resolve_dest_(const std::string& rel_path,
-                           std::filesystem::path& out_resolved) const {
-    if (!is_path_safe(rel_path)) return false;
+bool Server::resolve_dest_(const std::string& rel_path, std::filesystem::path& out_resolved) const {
+    if (!is_path_safe(rel_path))
+        return false;
     auto candidate = (root_ / rel_path).lexically_normal();
 
     // Defensive: ensure the resolved path begins with root_'s normalized form.
     const auto root_norm = root_.lexically_normal();
-    auto       cand_str  = candidate.generic_string();
-    auto       root_str  = root_norm.generic_string();
-    if (cand_str.rfind(root_str, 0) != 0) return false;
+    auto cand_str = candidate.generic_string();
+    auto root_str = root_norm.generic_string();
+    if (cand_str.rfind(root_str, 0) != 0)
+        return false;
 
     out_resolved = std::move(candidate);
     return true;
 }
 
 bool Server::handle_session_(asio::ip::tcp::socket socket) {
-    auto conn = ssl_ctx_
-                    ? Connection(std::move(socket), *ssl_ctx_)
-                    : Connection(std::move(socket));
+    auto conn = ssl_ctx_ ? Connection(std::move(socket), *ssl_ctx_) : Connection(std::move(socket));
     if (ssl_ctx_) {
         if (!conn.tls_server_handshake()) {
             spdlog::warn("session: TLS handshake failed: {}", conn.last_error());
@@ -145,9 +143,9 @@ bool Server::handle_session_(asio::ip::tcp::socket socket) {
         return false;
     }
     if (client_hello->protocol_version != proto::kProtocolVersion) {
-        send_error(conn, proto::ErrorCode::UnsupportedVersion,
-                   "server requires protocol version " +
-                       std::to_string(proto::kProtocolVersion));
+        send_error(conn,
+                   proto::ErrorCode::UnsupportedVersion,
+                   "server requires protocol version " + std::to_string(proto::kProtocolVersion));
         return false;
     }
 
@@ -176,7 +174,10 @@ bool Server::handle_session_(asio::ip::tcp::socket socket) {
     }
 
     spdlog::info("session: receiving \"{}\" → {} ({} bytes, {} chunks)",
-                 manifest->path, dest.string(), manifest->file_size, manifest->chunk_count);
+                 manifest->path,
+                 dest.string(),
+                 manifest->file_size,
+                 manifest->chunk_count);
 
     // ---- Resume support: load .ftxstate, reconcile against manifest ----
     auto state_path = dest;
@@ -187,18 +188,17 @@ bool Server::handle_session_(asio::ip::tcp::socket socket) {
     io::ResumeState::ManifestId mid{};
     {
         const auto enc = proto::encode_manifest(*manifest);
-        const auto h   = blake3(enc);
+        const auto h = blake3(enc);
         std::copy(h.begin(), h.end(), mid.begin());
     }
 
     io::ResumeState state;
-    bool            resume_active = false;
+    bool resume_active = false;
     {
         io::ResumeState loaded;
-        if (io::ResumeState::load(state_path, loaded) &&
-            loaded.manifest_id() == mid &&
+        if (io::ResumeState::load(state_path, loaded) && loaded.manifest_id() == mid &&
             loaded.chunk_count() == manifest->chunk_count) {
-            state         = std::move(loaded);
+            state = std::move(loaded);
             resume_active = true;
             spdlog::info("session: resuming with {} of {} chunks already received",
                          manifest->chunk_count - state.missing().size(),
@@ -230,12 +230,12 @@ bool Server::handle_session_(asio::ip::tcp::socket socket) {
     //    arrive in order (which is the phase 2/3 case). For out-of-order
     //    arrivals (phase 5 resume) we recompute the root hash from disk after
     //    the loop.
-    uint64_t      bytes_received  = 0;
-    uint32_t      chunks_received = 0;
-    Blake3Hasher  inorder_root_hasher;
-    bool          all_in_order    = !resume_active;  // resume always re-hashes from disk
-    uint32_t      next_expected   = 0;
-    proto::Hash   client_final_root_hash{};
+    uint64_t bytes_received = 0;
+    uint32_t chunks_received = 0;
+    Blake3Hasher inorder_root_hasher;
+    bool all_in_order = !resume_active;  // resume always re-hashes from disk
+    uint32_t next_expected = 0;
+    proto::Hash client_final_root_hash{};
     while (true) {
         auto frame = conn.recv_frame();
         if (!frame) {
@@ -252,8 +252,7 @@ bool Server::handle_session_(asio::ip::tcp::socket socket) {
             break;
         }
         if (frame->header.type != proto::FrameType::Chunk) {
-            send_error(conn, proto::ErrorCode::ProtocolViolation,
-                       "expected CHUNK or COMPLETE");
+            send_error(conn, proto::ErrorCode::ProtocolViolation, "expected CHUNK or COMPLETE");
             return false;
         }
 
@@ -263,23 +262,24 @@ bool Server::handle_session_(asio::ip::tcp::socket socket) {
             return false;
         }
         if (chunk->index >= manifest->chunk_count) {
-            send_error(conn, proto::ErrorCode::ProtocolViolation,
-                       "chunk index out of range");
+            send_error(conn, proto::ErrorCode::ProtocolViolation, "chunk index out of range");
             return false;
         }
 
         // Per-chunk integrity check against BLAKE3(data).
         const auto computed = blake3(chunk->data);
         if (computed != chunk->hash) {
-            send_error(conn, proto::ErrorCode::HashMismatch,
+            send_error(conn,
+                       proto::ErrorCode::HashMismatch,
                        "chunk hash mismatch at index " + std::to_string(chunk->index));
             return false;
         }
         // Cross-check against the manifest's declared chunk hash.
         if (manifest->chunk_hashes[chunk->index] != chunk->hash) {
-            send_error(conn, proto::ErrorCode::HashMismatch,
-                       "chunk hash diverges from manifest at index " +
-                           std::to_string(chunk->index));
+            send_error(
+                conn,
+                proto::ErrorCode::HashMismatch,
+                "chunk hash diverges from manifest at index " + std::to_string(chunk->index));
             return false;
         }
 
@@ -290,8 +290,7 @@ bool Server::handle_session_(asio::ip::tcp::socket socket) {
             all_in_order = false;
         }
 
-        const uint64_t offset =
-            static_cast<uint64_t>(chunk->index) * manifest->chunk_size;
+        const uint64_t offset = static_cast<uint64_t>(chunk->index) * manifest->chunk_size;
         if (!sink.write_at(offset, chunk->data)) {
             send_error(conn, proto::ErrorCode::InternalError, sink.last_error());
             return false;
@@ -311,16 +310,17 @@ bool Server::handle_session_(asio::ip::tcp::socket socket) {
     //  session; we instead verify the full chunk inventory is present.)
     if (resume_active) {
         if (!state.complete()) {
-            send_error(conn, proto::ErrorCode::ProtocolViolation,
+            send_error(conn,
+                       proto::ErrorCode::ProtocolViolation,
                        "transfer ended with chunks still missing");
             return false;
         }
     } else {
         if (bytes_received != manifest->file_size) {
-            send_error(conn, proto::ErrorCode::ProtocolViolation,
-                       "byte count mismatch (expected " +
-                           std::to_string(manifest->file_size) + ", got " +
-                           std::to_string(bytes_received) + ")");
+            send_error(conn,
+                       proto::ErrorCode::ProtocolViolation,
+                       "byte count mismatch (expected " + std::to_string(manifest->file_size) +
+                           ", got " + std::to_string(bytes_received) + ")");
             return false;
         }
         if (chunks_received != manifest->chunk_count) {
@@ -342,28 +342,26 @@ bool Server::handle_session_(asio::ip::tcp::socket socket) {
         }
         std::ifstream fb(sink.partial_path(), std::ios::binary);
         if (!fb.is_open()) {
-            send_error(conn, proto::ErrorCode::InternalError,
-                       "cannot reopen .partial for verification");
+            send_error(
+                conn, proto::ErrorCode::InternalError, "cannot reopen .partial for verification");
             return false;
         }
         std::vector<std::byte> rb(64 * 1024);
         while (fb.good()) {
-            fb.read(reinterpret_cast<char*>(rb.data()),
-                    static_cast<std::streamsize>(rb.size()));
+            fb.read(reinterpret_cast<char*>(rb.data()), static_cast<std::streamsize>(rb.size()));
             const auto n = static_cast<size_t>(fb.gcount());
-            if (n > 0) disk_hasher.update(std::span<const std::byte>(rb.data(), n));
+            if (n > 0)
+                disk_hasher.update(std::span<const std::byte>(rb.data(), n));
         }
         actual_root_hash = disk_hasher.finalize();
     }
 
     if (actual_root_hash != manifest->root_hash) {
-        send_error(conn, proto::ErrorCode::HashMismatch,
-                   "root hash mismatch (manifest)");
+        send_error(conn, proto::ErrorCode::HashMismatch, "root hash mismatch (manifest)");
         return false;
     }
     if (actual_root_hash != client_final_root_hash) {
-        send_error(conn, proto::ErrorCode::HashMismatch,
-                   "root hash mismatch (COMPLETE)");
+        send_error(conn, proto::ErrorCode::HashMismatch, "root hash mismatch (COMPLETE)");
         return false;
     }
 
@@ -373,9 +371,8 @@ bool Server::handle_session_(asio::ip::tcp::socket socket) {
     }
     io::ResumeState::remove(state_path);
 
-    const proto::AckMsg ack{.last_index = (manifest->chunk_count == 0)
-                                              ? 0
-                                              : manifest->chunk_count - 1};
+    const proto::AckMsg ack{.last_index =
+                                (manifest->chunk_count == 0) ? 0 : manifest->chunk_count - 1};
     if (!conn.send_frame(proto::FrameType::Ack, proto::encode_ack(ack))) {
         spdlog::warn("session: ACK send failed: {}", conn.last_error());
         return false;

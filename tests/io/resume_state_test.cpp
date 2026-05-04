@@ -1,4 +1,4 @@
-#include <gtest/gtest.h>
+#include "ftx/io/resume_state.hpp"
 
 #include <chrono>
 #include <filesystem>
@@ -6,15 +6,15 @@
 #include <sstream>
 #include <thread>
 
-#include "ftx/io/resume_state.hpp"
+#include <gtest/gtest.h>
 
 namespace {
 
 namespace fs = std::filesystem;
 
 fs::path tmpfile(const std::string& tag) {
-    const auto stamp = static_cast<uint64_t>(
-        std::chrono::steady_clock::now().time_since_epoch().count());
+    const auto stamp =
+        static_cast<uint64_t>(std::chrono::steady_clock::now().time_since_epoch().count());
     std::ostringstream oss;
     oss << "ftx-rs-" << tag << "-" << stamp << "-" << std::this_thread::get_id() << ".bin";
     return fs::temp_directory_path() / oss.str();
@@ -22,7 +22,8 @@ fs::path tmpfile(const std::string& tag) {
 
 ftx::io::ResumeState::ManifestId fake_id(unsigned char fill) {
     ftx::io::ResumeState::ManifestId id{};
-    for (auto& b : id) b = std::byte{fill};
+    for (auto& b : id)
+        b = std::byte{fill};
     return id;
 }
 
@@ -31,7 +32,8 @@ TEST(ResumeState, FreshStateAllMissing) {
     EXPECT_EQ(s.chunk_count(), 17u);
     EXPECT_EQ(s.missing().size(), 17u);
     EXPECT_FALSE(s.complete());
-    for (uint32_t i = 0; i < 17; ++i) EXPECT_FALSE(s.is_set(i));
+    for (uint32_t i = 0; i < 17; ++i)
+        EXPECT_FALSE(s.is_set(i));
 }
 
 TEST(ResumeState, MarkAndQuery) {
@@ -50,7 +52,8 @@ TEST(ResumeState, MarkAndQuery) {
 
 TEST(ResumeState, MarkAllIsComplete) {
     ftx::io::ResumeState s(fake_id(0xFF), 9);
-    for (uint32_t i = 0; i < 9; ++i) s.mark_received(i);
+    for (uint32_t i = 0; i < 9; ++i)
+        s.mark_received(i);
     EXPECT_TRUE(s.complete());
     EXPECT_TRUE(s.missing().empty());
 }
@@ -79,7 +82,7 @@ TEST(ResumeState, RoundtripsToDisk) {
 }
 
 TEST(ResumeState, LoadMissingFileReturnsFalse) {
-    const auto           path = tmpfile("missing");
+    const auto path = tmpfile("missing");
     ftx::io::ResumeState s;
     EXPECT_FALSE(ftx::io::ResumeState::load(path, s));
 }

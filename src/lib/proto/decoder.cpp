@@ -7,7 +7,8 @@ FrameDecoder::FrameDecoder(size_t max_payload) noexcept : max_payload_(max_paylo
 }
 
 bool FrameDecoder::feed(std::span<const std::byte> bytes) {
-    if (state_ == State::Poisoned) return false;
+    if (state_ == State::Poisoned)
+        return false;
     if (!bytes.empty()) {
         buffer_.insert(buffer_.end(), bytes.begin(), bytes.end());
     }
@@ -51,16 +52,21 @@ bool FrameDecoder::try_consume_header_() {
     auto hdr = FrameHeader::decode_from(hdr_span, max_payload_, &reason);
     if (!hdr.has_value()) {
         switch (reason) {
-            case FrameHeader::DecodeError::BadCrc:          last_error_ = Error::BadCrc; break;
-            case FrameHeader::DecodeError::UnknownType:     last_error_ = Error::UnknownType; break;
-            case FrameHeader::DecodeError::PayloadTooLarge: last_error_ = Error::PayloadTooLarge; break;
+            case FrameHeader::DecodeError::BadCrc:
+                last_error_ = Error::BadCrc;
+                break;
+            case FrameHeader::DecodeError::UnknownType:
+                last_error_ = Error::UnknownType;
+                break;
+            case FrameHeader::DecodeError::PayloadTooLarge:
+                last_error_ = Error::PayloadTooLarge;
+                break;
         }
         state_ = State::Poisoned;
         return false;
     }
     pending_header_ = *hdr;
-    buffer_.erase(buffer_.begin(),
-                  buffer_.begin() + static_cast<std::ptrdiff_t>(kHeaderSize));
+    buffer_.erase(buffer_.begin(), buffer_.begin() + static_cast<std::ptrdiff_t>(kHeaderSize));
     state_ = (pending_header_.payload_len == 0) ? State::FrameReady : State::ReadingPayload;
     return true;
 }
@@ -78,7 +84,7 @@ Frame FrameDecoder::take_frame() {
         buffer_.erase(buffer_.begin(), buffer_.begin() + take_n);
     }
     pending_header_ = {};
-    state_          = State::ReadingHeader;
+    state_ = State::ReadingHeader;
     // Try to advance to the next frame if enough bytes are already buffered.
     (void)drive_();
     return f;
@@ -86,10 +92,14 @@ Frame FrameDecoder::take_frame() {
 
 std::string_view FrameDecoder::last_error_message() const noexcept {
     switch (last_error_) {
-        case Error::None:            return "";
-        case Error::BadCrc:          return "header CRC mismatch";
-        case Error::UnknownType:     return "unknown frame type";
-        case Error::PayloadTooLarge: return "payload exceeds maximum";
+        case Error::None:
+            return "";
+        case Error::BadCrc:
+            return "header CRC mismatch";
+        case Error::UnknownType:
+            return "unknown frame type";
+        case Error::PayloadTooLarge:
+            return "payload exceeds maximum";
     }
     return "unknown";
 }

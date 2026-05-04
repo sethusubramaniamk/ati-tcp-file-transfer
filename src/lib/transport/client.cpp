@@ -1,10 +1,9 @@
 #include "ftx/transport/client.hpp"
 
-#include <spdlog/spdlog.h>
-
+#include <memory>
 #include <vector>
 
-#include <memory>
+#include <spdlog/spdlog.h>
 
 #include "ftx/io/file_source.hpp"
 #include "ftx/proto/messages.hpp"
@@ -16,8 +15,7 @@ namespace ftx::transport {
 
 Client::Client(asio::io_context& io) noexcept : io_(io) {}
 
-Client::Client(asio::io_context& io, Options opts) noexcept
-    : io_(io), opts_(opts) {}
+Client::Client(asio::io_context& io, Options opts) noexcept : io_(io), opts_(opts) {}
 
 bool Client::send(const std::string& host,
                   uint16_t port,
@@ -32,13 +30,12 @@ bool Client::send(const std::string& host,
     const uint64_t file_size = src.size();
     const uint32_t chunk_size = opts_.chunk_size;
     const uint32_t chunk_count =
-        (file_size == 0) ? 0
-                         : static_cast<uint32_t>((file_size + chunk_size - 1) / chunk_size);
+        (file_size == 0) ? 0 : static_cast<uint32_t>((file_size + chunk_size - 1) / chunk_size);
 
     // 2. Resolve and connect.
     asio::ip::tcp::resolver resolver(io_);
-    asio::error_code        ec;
-    auto                    endpoints = resolver.resolve(host, std::to_string(port), ec);
+    asio::error_code ec;
+    auto endpoints = resolver.resolve(host, std::to_string(port), ec);
     if (ec) {
         last_error_ = "resolve: " + ec.message();
         return false;
@@ -56,8 +53,7 @@ bool Client::send(const std::string& host,
         ssl_ctx = make_client_tls_context(*opts_.tls);
     }
 
-    auto conn = ssl_ctx ? Connection(std::move(socket), *ssl_ctx)
-                        : Connection(std::move(socket));
+    auto conn = ssl_ctx ? Connection(std::move(socket), *ssl_ctx) : Connection(std::move(socket));
     if (ssl_ctx) {
         const std::string sni = opts_.tls->sni_host.empty() ? host : opts_.tls->sni_host;
         if (!conn.tls_client_handshake(sni)) {
@@ -73,8 +69,7 @@ bool Client::send(const std::string& host,
     }
     auto hello_resp = conn.recv_frame();
     if (!hello_resp || hello_resp->header.type != proto::FrameType::Hello) {
-        last_error_ = "recv HELLO: " +
-                      (hello_resp ? "unexpected frame type" : conn.last_error());
+        last_error_ = "recv HELLO: " + (hello_resp ? "unexpected frame type" : conn.last_error());
         return false;
     }
     const auto server_hello = proto::decode_hello(hello_resp->payload);
@@ -94,29 +89,29 @@ bool Client::send(const std::string& host,
     //    (phase 5) to ask for specific missing chunks. Phase 6 will fold
     //    this into a single streaming pass.
     std::vector<proto::Hash> chunk_hashes(chunk_count);
-    Blake3Hasher             root_hasher;
+    Blake3Hasher root_hasher;
     {
         std::vector<std::byte> scratch(chunk_size);
         for (uint32_t i = 0; i < chunk_count; ++i) {
             const uint64_t offset = static_cast<uint64_t>(i) * chunk_size;
-            size_t         n      = 0;
+            size_t n = 0;
             if (!src.read_at(offset, scratch, &n)) {
                 last_error_ = "hash pass: " + src.last_error();
                 return false;
             }
             const auto chunk_view = std::span<const std::byte>(scratch.data(), n);
-            chunk_hashes[i]       = blake3(chunk_view);
+            chunk_hashes[i] = blake3(chunk_view);
             root_hasher.update(chunk_view);
         }
     }
     const proto::Hash root_hash = root_hasher.finalize();
 
     proto::ManifestMsg manifest;
-    manifest.file_size    = file_size;
-    manifest.chunk_size   = chunk_size;
-    manifest.chunk_count  = chunk_count;
-    manifest.root_hash    = root_hash;
-    manifest.path         = remote_dest;
+    manifest.file_size = file_size;
+    manifest.chunk_size = chunk_size;
+    manifest.chunk_count = chunk_count;
+    manifest.root_hash = root_hash;
+    manifest.path = remote_dest;
     manifest.chunk_hashes = chunk_hashes;
 
     if (!conn.send_frame(proto::FrameType::Manifest, proto::encode_manifest(manifest))) {
@@ -127,8 +122,8 @@ bool Client::send(const std::string& host,
     // 4b. Wait for REQ_CHUNKS — receiver tells us which indices to send.
     auto req_frame = conn.recv_frame();
     if (!req_frame || req_frame->header.type != proto::FrameType::ReqChunks) {
-        last_error_ = "recv REQ_CHUNKS: " +
-                      (req_frame ? "unexpected frame type" : conn.last_error());
+        last_error_ =
+            "recv REQ_CHUNKS: " + (req_frame ? "unexpected frame type" : conn.last_error());
         return false;
     }
     const auto req = proto::decode_req_chunks(req_frame->payload);
@@ -147,14 +142,14 @@ bool Client::send(const std::string& host,
             return false;
         }
         const uint64_t offset = static_cast<uint64_t>(i) * chunk_size;
-        size_t         n      = 0;
+        size_t n = 0;
         if (!src.read_at(offset, buf, &n)) {
             last_error_ = "read source: " + src.last_error();
             return false;
         }
         proto::ChunkMsg chunk;
         chunk.index = i;
-        chunk.hash  = chunk_hashes[i];
+        chunk.hash = chunk_hashes[i];
         chunk.data.assign(buf.begin(), buf.begin() + static_cast<std::ptrdiff_t>(n));
 
         if (!conn.send_frame(proto::FrameType::Chunk, proto::encode_chunk(chunk))) {
@@ -166,7 +161,7 @@ bool Client::send(const std::string& host,
     // 6. COMPLETE — carries the same root_hash for end-of-stream verification.
     proto::CompleteMsg complete;
     complete.final_root_hash = root_hash;
-    complete.status          = 0;
+    complete.status = 0;
     if (!conn.send_frame(proto::FrameType::Complete, proto::encode_complete(complete))) {
         last_error_ = "send COMPLETE: " + conn.last_error();
         return false;

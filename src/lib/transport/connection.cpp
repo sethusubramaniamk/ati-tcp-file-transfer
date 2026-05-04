@@ -8,14 +8,13 @@ namespace ftx::transport {
 
 namespace {
 
-template <typename Stream>
-constexpr bool is_tls_stream_v = std::is_same_v<std::decay_t<Stream>,
-                                                Connection::TlsStream>;
+template<typename Stream>
+constexpr bool is_tls_stream_v = std::is_same_v<std::decay_t<Stream>, Connection::TlsStream>;
 
 // Best-effort close: shutdown both directions, then close the underlying
 // socket. For TLS streams, attempt a graceful TLS shutdown first but ignore
 // errors (peer may have already gone away).
-template <typename Stream>
+template<typename Stream>
 void shutdown_and_close(Stream& s) noexcept {
     asio::error_code ec;
     if constexpr (is_tls_stream_v<Stream>) {
@@ -34,17 +33,19 @@ void shutdown_and_close(Stream& s) noexcept {
 
 }  // namespace
 
-Connection::Connection(PlainStream socket) noexcept
-    : stream_(std::move(socket)) {}
+Connection::Connection(PlainStream socket) noexcept : stream_(std::move(socket)) {}
 
 Connection::Connection(PlainStream socket, asio::ssl::context& ctx)
     : stream_(TlsStream{std::move(socket), ctx}) {}
 
-Connection::~Connection() { close(); }
+Connection::~Connection() {
+    close();
+}
 
 bool Connection::tls_client_handshake(std::string_view sni_host) {
-    if (!std::holds_alternative<TlsStream>(stream_)) return true;
-    auto&            s = std::get<TlsStream>(stream_);
+    if (!std::holds_alternative<TlsStream>(stream_))
+        return true;
+    auto& s = std::get<TlsStream>(stream_);
 
     if (!sni_host.empty()) {
         // Pass server name for SNI extension.
@@ -70,8 +71,9 @@ bool Connection::tls_client_handshake(std::string_view sni_host) {
 }
 
 bool Connection::tls_server_handshake() {
-    if (!std::holds_alternative<TlsStream>(stream_)) return true;
-    auto&            s = std::get<TlsStream>(stream_);
+    if (!std::holds_alternative<TlsStream>(stream_))
+        return true;
+    auto& s = std::get<TlsStream>(stream_);
     asio::error_code ec;
     s.handshake(asio::ssl::stream_base::server, ec);
     if (ec) {
@@ -90,13 +92,13 @@ bool Connection::send_frame(proto::FrameType type, std::span<const std::byte> pa
     std::array<std::byte, proto::kHeaderSize> header_buf{};
     const proto::FrameHeader hdr{
         .payload_len = static_cast<uint32_t>(payload.size()),
-        .type        = type,
+        .type = type,
     };
     hdr.encode_to(header_buf);
 
     const std::array<asio::const_buffer, 2> bufs{
         asio::buffer(header_buf.data(), header_buf.size()),
-        asio::buffer(payload.data(),    payload.size()),
+        asio::buffer(payload.data(), payload.size()),
     };
 
     asio::error_code ec;
@@ -112,9 +114,7 @@ std::optional<proto::Frame> Connection::recv_frame(size_t max_payload) {
     std::array<std::byte, proto::kHeaderSize> header_buf{};
     asio::error_code ec;
     std::visit(
-        [&](auto& s) {
-            asio::read(s, asio::buffer(header_buf.data(), header_buf.size()), ec);
-        },
+        [&](auto& s) { asio::read(s, asio::buffer(header_buf.data(), header_buf.size()), ec); },
         stream_);
     if (ec) {
         last_error_ = "recv_frame header: " + ec.message();
@@ -126,11 +126,14 @@ std::optional<proto::Frame> Connection::recv_frame(size_t max_payload) {
     if (!hdr.has_value()) {
         switch (reason) {
             case proto::FrameHeader::DecodeError::BadCrc:
-                last_error_ = "recv_frame: header CRC mismatch"; break;
+                last_error_ = "recv_frame: header CRC mismatch";
+                break;
             case proto::FrameHeader::DecodeError::UnknownType:
-                last_error_ = "recv_frame: unknown frame type"; break;
+                last_error_ = "recv_frame: unknown frame type";
+                break;
             case proto::FrameHeader::DecodeError::PayloadTooLarge:
-                last_error_ = "recv_frame: payload too large"; break;
+                last_error_ = "recv_frame: payload too large";
+                break;
         }
         return std::nullopt;
     }
@@ -140,9 +143,7 @@ std::optional<proto::Frame> Connection::recv_frame(size_t max_payload) {
     if (hdr->payload_len > 0) {
         f.payload.resize(hdr->payload_len);
         std::visit(
-            [&](auto& s) {
-                asio::read(s, asio::buffer(f.payload.data(), f.payload.size()), ec);
-            },
+            [&](auto& s) { asio::read(s, asio::buffer(f.payload.data(), f.payload.size()), ec); },
             stream_);
         if (ec) {
             last_error_ = "recv_frame payload: " + ec.message();

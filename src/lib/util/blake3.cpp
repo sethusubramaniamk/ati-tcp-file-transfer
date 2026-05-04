@@ -41,14 +41,15 @@ Blake3Hasher::Blake3Hasher() noexcept {
 }
 
 void Blake3Hasher::update(std::span<const std::byte> data) noexcept {
-    if (data.empty()) return;
+    if (data.empty())
+        return;
     blake3_hasher_update(as_hasher(state_.data()), data.data(), data.size());
 }
 
 HashDigest Blake3Hasher::finalize() const noexcept {
     HashDigest out{};
-    blake3_hasher_finalize(as_hasher(state_.data()),
-                           reinterpret_cast<uint8_t*>(out.data()), out.size());
+    blake3_hasher_finalize(
+        as_hasher(state_.data()), reinterpret_cast<uint8_t*>(out.data()), out.size());
     return out;
 }
 

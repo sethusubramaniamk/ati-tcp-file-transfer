@@ -19,13 +19,20 @@ bool is_known_frame_type(uint8_t v) noexcept {
 
 std::string_view to_string(FrameType t) noexcept {
     switch (t) {
-        case FrameType::Hello:     return "HELLO";
-        case FrameType::Manifest:  return "MANIFEST";
-        case FrameType::ReqChunks: return "REQ_CHUNKS";
-        case FrameType::Chunk:     return "CHUNK";
-        case FrameType::Ack:       return "ACK";
-        case FrameType::Complete:  return "COMPLETE";
-        case FrameType::Error:     return "ERROR";
+        case FrameType::Hello:
+            return "HELLO";
+        case FrameType::Manifest:
+            return "MANIFEST";
+        case FrameType::ReqChunks:
+            return "REQ_CHUNKS";
+        case FrameType::Chunk:
+            return "CHUNK";
+        case FrameType::Ack:
+            return "ACK";
+        case FrameType::Complete:
+            return "COMPLETE";
+        case FrameType::Error:
+            return "ERROR";
     }
     return "UNKNOWN";
 }

@@ -20,15 +20,15 @@ inline constexpr HashDigest kZeroDigest{};
 class Blake3Hasher {
  public:
     Blake3Hasher() noexcept;
-    Blake3Hasher(const Blake3Hasher&)            = delete;
+    Blake3Hasher(const Blake3Hasher&) = delete;
     Blake3Hasher& operator=(const Blake3Hasher&) = delete;
-    Blake3Hasher(Blake3Hasher&&) noexcept            = default;
+    Blake3Hasher(Blake3Hasher&&) noexcept = default;
     Blake3Hasher& operator=(Blake3Hasher&&) noexcept = default;
-    ~Blake3Hasher()                                  = default;
+    ~Blake3Hasher() = default;
 
-    void                     update(std::span<const std::byte> data) noexcept;
+    void update(std::span<const std::byte> data) noexcept;
     [[nodiscard]] HashDigest finalize() const noexcept;
-    void                     reset() noexcept;
+    void reset() noexcept;
 
  private:
     // Opaque storage that must accommodate a `blake3_hasher`. Defined in the

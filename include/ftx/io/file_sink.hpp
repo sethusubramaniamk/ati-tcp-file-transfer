@@ -37,15 +37,17 @@ class FileSink {
     void close();
 
     [[nodiscard]] std::string last_error() const { return last_error_; }
-    [[nodiscard]] const std::filesystem::path& final_path()   const noexcept { return final_path_; }
-    [[nodiscard]] const std::filesystem::path& partial_path() const noexcept { return partial_path_; }
+    [[nodiscard]] const std::filesystem::path& final_path() const noexcept { return final_path_; }
+    [[nodiscard]] const std::filesystem::path& partial_path() const noexcept {
+        return partial_path_;
+    }
 
  private:
     std::filesystem::path final_path_;
     std::filesystem::path partial_path_;
-    std::ofstream         stream_;        // ofstream + seekp gives us random write
-    uint64_t              total_size_ = 0;
-    std::string           last_error_;
+    std::ofstream stream_;  // ofstream + seekp gives us random write
+    uint64_t total_size_ = 0;
+    std::string last_error_;
 };
 
 }  // namespace ftx::io

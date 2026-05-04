@@ -18,22 +18,22 @@ class FileSource {
     [[nodiscard]] bool open();
 
     [[nodiscard]] uint64_t size() const noexcept { return size_; }
-    [[nodiscard]] bool     is_open() const noexcept { return stream_.is_open(); }
+    [[nodiscard]] bool is_open() const noexcept { return stream_.is_open(); }
 
     // Reads up to buf.size() bytes starting at `offset`. The actual count is
     // written to *out_n on success. Returns false on I/O error or out-of-range
     // offset; the source is then in an error state.
     [[nodiscard]] bool read_at(uint64_t offset, std::span<std::byte> buf, size_t* out_n);
 
-    void                      close();
+    void close();
     [[nodiscard]] std::string last_error() const { return last_error_; }
     [[nodiscard]] const std::filesystem::path& path() const noexcept { return path_; }
 
  private:
     std::filesystem::path path_;
-    std::ifstream         stream_;
-    uint64_t              size_       = 0;
-    std::string           last_error_;
+    std::ifstream stream_;
+    uint64_t size_ = 0;
+    std::string last_error_;
 };
 
 }  // namespace ftx::io

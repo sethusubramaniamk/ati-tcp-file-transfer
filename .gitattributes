@@ -1,0 +1,18 @@
+# Normalize line endings to LF on commit, regardless of working-tree platform.
+# This silences the "LF will be replaced by CRLF" warnings on Windows hosts
+# and keeps the repo identical on Linux, WSL, and macOS.
+* text=auto eol=lf
+
+# Binaries — never normalize.
+*.png   binary
+*.jpg   binary
+*.gz    binary
+*.zip   binary
+*.pdf   binary
+
+# Shell scripts must be LF for WSL / Linux / macOS execution.
+*.sh    text eol=lf
+
+# Windows-only bits (none yet, but future .bat/.ps1 should stay CRLF).
+*.bat   text eol=crlf
+*.ps1   text eol=crlf

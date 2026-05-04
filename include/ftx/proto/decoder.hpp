@@ -38,9 +38,9 @@ class FrameDecoder {
     // for the next frame, has_frame() may be true again immediately.
     [[nodiscard]] Frame take_frame();
 
-    [[nodiscard]] Error            last_error() const noexcept { return last_error_; }
+    [[nodiscard]] Error last_error() const noexcept { return last_error_; }
     [[nodiscard]] std::string_view last_error_message() const noexcept;
-    [[nodiscard]] bool             poisoned() const noexcept { return last_error_ != Error::None; }
+    [[nodiscard]] bool poisoned() const noexcept { return last_error_ != Error::None; }
 
  private:
     enum class State { ReadingHeader, ReadingPayload, FrameReady, Poisoned };
@@ -48,11 +48,11 @@ class FrameDecoder {
     bool drive_();
     bool try_consume_header_();
 
-    size_t                 max_payload_;
-    State                  state_      = State::ReadingHeader;
-    Error                  last_error_ = Error::None;
+    size_t max_payload_;
+    State state_ = State::ReadingHeader;
+    Error last_error_ = Error::None;
     std::vector<std::byte> buffer_;
-    FrameHeader            pending_header_{};
+    FrameHeader pending_header_{};
 };
 
 }  // namespace ftx::proto

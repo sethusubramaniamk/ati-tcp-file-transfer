@@ -1,9 +1,10 @@
-#include <gtest/gtest.h>
+#include "ftx/proto/decoder.hpp"
 
 #include <span>
 #include <vector>
 
-#include "ftx/proto/decoder.hpp"
+#include <gtest/gtest.h>
+
 #include "ftx/proto/frame.hpp"
 
 namespace {
@@ -90,7 +91,8 @@ TEST(FrameDecoder, BytewiseFeed) {
 
 TEST(FrameDecoder, PoisonedOnBadCrc) {
     auto encoded = encode_frame(FrameType::Chunk, filled(4, 0x33));
-    encoded[5] = std::byte{static_cast<unsigned char>(std::to_integer<uint8_t>(encoded[5]) ^ 0xAAu)};
+    encoded[5] =
+        std::byte{static_cast<unsigned char>(std::to_integer<uint8_t>(encoded[5]) ^ 0xAAu)};
 
     FrameDecoder dec;
     EXPECT_FALSE(dec.feed(encoded));
@@ -118,8 +120,8 @@ TEST(FrameDecoder, SplitOnHeaderBoundary) {
     // Feed first 9 bytes (just the header), then the rest.
     ASSERT_TRUE(dec.feed(std::span<const std::byte>(encoded.data(), kHeaderSize)));
     EXPECT_FALSE(dec.has_frame());
-    ASSERT_TRUE(dec.feed(std::span<const std::byte>(encoded.data() + kHeaderSize,
-                                                    encoded.size() - kHeaderSize)));
+    ASSERT_TRUE(dec.feed(
+        std::span<const std::byte>(encoded.data() + kHeaderSize, encoded.size() - kHeaderSize)));
     ASSERT_TRUE(dec.has_frame());
 
     const auto f = dec.take_frame();

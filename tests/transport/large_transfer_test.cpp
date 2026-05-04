@@ -1,9 +1,5 @@
 // Heavy integration tests gated by the FTX_LARGE_TEST environment variable.
 // Set FTX_LARGE_TEST=1 to enable the 1 GiB transfer.
-#include <gtest/gtest.h>
-
-#include <asio.hpp>
-
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
@@ -15,6 +11,9 @@
 #include <sstream>
 #include <thread>
 #include <vector>
+
+#include <asio.hpp>
+#include <gtest/gtest.h>
 
 #include "ftx/transport/client.hpp"
 #include "ftx/transport/server.hpp"
@@ -29,8 +28,8 @@ bool large_test_enabled() {
 }
 
 fs::path mk_temp_dir(const std::string& tag) {
-    const auto stamp = static_cast<uint64_t>(
-        std::chrono::steady_clock::now().time_since_epoch().count());
+    const auto stamp =
+        static_cast<uint64_t>(std::chrono::steady_clock::now().time_since_epoch().count());
     std::ostringstream oss;
     oss << "ftx-large-" << tag << "-" << stamp << "-" << std::this_thread::get_id();
     auto dir = fs::temp_directory_path() / oss.str();
@@ -39,24 +38,26 @@ fs::path mk_temp_dir(const std::string& tag) {
 }
 
 void write_pseudo_random_file(const fs::path& p, uint64_t size, uint32_t seed) {
-    std::mt19937                       rng(seed);
+    std::mt19937 rng(seed);
     std::uniform_int_distribution<int> dist(0, 255);
-    std::ofstream                      f(p, std::ios::binary);
-    constexpr size_t                   kBlock = 1024 * 1024;
-    std::vector<char>                  buf(kBlock);
-    uint64_t                           remaining = size;
+    std::ofstream f(p, std::ios::binary);
+    constexpr size_t kBlock = 1024 * 1024;
+    std::vector<char> buf(kBlock);
+    uint64_t remaining = size;
     while (remaining > 0) {
         const size_t n = static_cast<size_t>(std::min<uint64_t>(kBlock, remaining));
-        for (size_t i = 0; i < n; ++i) buf[i] = static_cast<char>(dist(rng));
+        for (size_t i = 0; i < n; ++i)
+            buf[i] = static_cast<char>(dist(rng));
         f.write(buf.data(), static_cast<std::streamsize>(n));
         remaining -= n;
     }
 }
 
 bool files_equal(const fs::path& a, const fs::path& b) {
-    if (fs::file_size(a) != fs::file_size(b)) return false;
-    std::ifstream    fa(a, std::ios::binary);
-    std::ifstream    fb(b, std::ios::binary);
+    if (fs::file_size(a) != fs::file_size(b))
+        return false;
+    std::ifstream fa(a, std::ios::binary);
+    std::ifstream fb(b, std::ios::binary);
     constexpr size_t kBlock = 1024 * 1024;
     std::vector<char> ba(kBlock), bb(kBlock);
     while (fa.good() && fb.good()) {
@@ -64,9 +65,12 @@ bool files_equal(const fs::path& a, const fs::path& b) {
         fb.read(bb.data(), static_cast<std::streamsize>(kBlock));
         const auto na = fa.gcount();
         const auto nb = fb.gcount();
-        if (na != nb) return false;
-        if (na == 0)  return true;
-        if (std::memcmp(ba.data(), bb.data(), static_cast<size_t>(na)) != 0) return false;
+        if (na != nb)
+            return false;
+        if (na == 0)
+            return true;
+        if (std::memcmp(ba.data(), bb.data(), static_cast<size_t>(na)) != 0)
+            return false;
     }
     return true;
 }
@@ -77,9 +81,9 @@ TEST(LargeTransfer, OneGiBRoundtrip) {
     }
 
     constexpr uint64_t kSize = 1ull * 1024 * 1024 * 1024;
-    const auto         work  = mk_temp_dir("1gib");
-    const auto         root  = work / "recv";
-    const auto         src   = work / "src.bin";
+    const auto work = mk_temp_dir("1gib");
+    const auto root = work / "recv";
+    const auto src = work / "src.bin";
     fs::create_directories(root);
 
     write_pseudo_random_file(src, kSize, /*seed=*/0xDEADu);
@@ -87,12 +91,12 @@ TEST(LargeTransfer, OneGiBRoundtrip) {
     asio::io_context srv_io;
     const asio::ip::tcp::endpoint ep(asio::ip::address_v4::loopback(), 0);
     ftx::transport::Server srv(srv_io, ep, root);
-    const auto             port = srv.local_port();
+    const auto port = srv.local_port();
 
     std::promise<bool> done;
-    std::thread        srv_thread([&]() { done.set_value(srv.run_one()); });
+    std::thread srv_thread([&]() { done.set_value(srv.run_one()); });
 
-    asio::io_context              cli_io;
+    asio::io_context cli_io;
     ftx::transport::ClientOptions opts;
     opts.chunk_size = 4 * 1024 * 1024;  // 4 MiB chunks for 1 GiB
     ftx::transport::Client cli(cli_io, opts);

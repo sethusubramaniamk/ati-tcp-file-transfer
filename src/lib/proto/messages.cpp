@@ -44,7 +44,8 @@ void append_hash(std::vector<std::byte>& out, const Hash& h) {
 }
 
 void append_bytes(std::vector<std::byte>& out, std::span<const std::byte> s) {
-    if (s.empty()) return;
+    if (s.empty())
+        return;
     const size_t pos = out.size();
     out.resize(pos + s.size());
     std::memcpy(out.data() + pos, s.data(), s.size());
@@ -57,57 +58,64 @@ class Cursor {
     explicit Cursor(std::span<const std::byte> p) noexcept : payload_(p) {}
 
     [[nodiscard]] bool take_u8(uint8_t& out) noexcept {
-        if (pos_ + 1 > payload_.size()) return false;
+        if (pos_ + 1 > payload_.size())
+            return false;
         out = std::to_integer<uint8_t>(payload_[pos_]);
         pos_ += 1;
         return true;
     }
     [[nodiscard]] bool take_u16(uint16_t& out) noexcept {
-        if (pos_ + 2 > payload_.size()) return false;
+        if (pos_ + 2 > payload_.size())
+            return false;
         out = read_be_u16(std::span<const std::byte, 2>(payload_.data() + pos_, 2));
         pos_ += 2;
         return true;
     }
     [[nodiscard]] bool take_u32(uint32_t& out) noexcept {
-        if (pos_ + 4 > payload_.size()) return false;
+        if (pos_ + 4 > payload_.size())
+            return false;
         out = read_be_u32(std::span<const std::byte, 4>(payload_.data() + pos_, 4));
         pos_ += 4;
         return true;
     }
     [[nodiscard]] bool take_u64(uint64_t& out) noexcept {
-        if (pos_ + 8 > payload_.size()) return false;
+        if (pos_ + 8 > payload_.size())
+            return false;
         out = read_be_u64(std::span<const std::byte, 8>(payload_.data() + pos_, 8));
         pos_ += 8;
         return true;
     }
     [[nodiscard]] bool take_hash(Hash& out) noexcept {
-        if (pos_ + kHashSize > payload_.size()) return false;
+        if (pos_ + kHashSize > payload_.size())
+            return false;
         std::memcpy(out.data(), payload_.data() + pos_, kHashSize);
         pos_ += kHashSize;
         return true;
     }
     [[nodiscard]] bool take_bytes(size_t n, std::vector<std::byte>& out) {
-        if (pos_ + n > payload_.size()) return false;
+        if (pos_ + n > payload_.size())
+            return false;
         out.assign(payload_.begin() + static_cast<std::ptrdiff_t>(pos_),
                    payload_.begin() + static_cast<std::ptrdiff_t>(pos_ + n));
         pos_ += n;
         return true;
     }
     [[nodiscard]] bool take_string(size_t n, std::string& out) {
-        if (pos_ + n > payload_.size()) return false;
+        if (pos_ + n > payload_.size())
+            return false;
         out.assign(reinterpret_cast<const char*>(payload_.data() + pos_), n);
         pos_ += n;
         return true;
     }
     [[nodiscard]] size_t remaining() const noexcept { return payload_.size() - pos_; }
-    [[nodiscard]] size_t position()  const noexcept { return pos_; }
+    [[nodiscard]] size_t position() const noexcept { return pos_; }
     [[nodiscard]] std::span<const std::byte> rest() const noexcept {
         return payload_.subspan(pos_);
     }
 
  private:
     std::span<const std::byte> payload_;
-    size_t                     pos_ = 0;
+    size_t pos_ = 0;
 };
 
 }  // namespace
@@ -118,19 +126,23 @@ class Cursor {
 std::vector<std::byte> encode_hello(const HelloMsg& m) {
     std::vector<std::byte> out;
     out.reserve(1 + 4 + 4);
-    append_u8 (out, m.protocol_version);
+    append_u8(out, m.protocol_version);
     append_u32(out, m.max_chunk_size);
     append_u32(out, m.capabilities);
     return out;
 }
 
 std::optional<HelloMsg> decode_hello(std::span<const std::byte> payload) {
-    Cursor    c(payload);
-    HelloMsg  m{};
-    if (!c.take_u8 (m.protocol_version)) return std::nullopt;
-    if (!c.take_u32(m.max_chunk_size))   return std::nullopt;
-    if (!c.take_u32(m.capabilities))     return std::nullopt;
-    if (c.remaining() != 0)              return std::nullopt;
+    Cursor c(payload);
+    HelloMsg m{};
+    if (!c.take_u8(m.protocol_version))
+        return std::nullopt;
+    if (!c.take_u32(m.max_chunk_size))
+        return std::nullopt;
+    if (!c.take_u32(m.capabilities))
+        return std::nullopt;
+    if (c.remaining() != 0)
+        return std::nullopt;
     return m;
 }
 
@@ -155,23 +167,31 @@ std::vector<std::byte> encode_manifest(const ManifestMsg& m) {
 }
 
 std::optional<ManifestMsg> decode_manifest(std::span<const std::byte> payload) {
-    Cursor      c(payload);
+    Cursor c(payload);
     ManifestMsg m{};
 
-    if (!c.take_u64 (m.file_size))   return std::nullopt;
-    if (!c.take_u32 (m.chunk_size))  return std::nullopt;
-    if (!c.take_u32 (m.chunk_count)) return std::nullopt;
-    if (!c.take_hash(m.root_hash))   return std::nullopt;
+    if (!c.take_u64(m.file_size))
+        return std::nullopt;
+    if (!c.take_u32(m.chunk_size))
+        return std::nullopt;
+    if (!c.take_u32(m.chunk_count))
+        return std::nullopt;
+    if (!c.take_hash(m.root_hash))
+        return std::nullopt;
 
     uint16_t path_len = 0;
-    if (!c.take_u16(path_len))                  return std::nullopt;
-    if (!c.take_string(path_len, m.path))       return std::nullopt;
+    if (!c.take_u16(path_len))
+        return std::nullopt;
+    if (!c.take_string(path_len, m.path))
+        return std::nullopt;
 
     m.chunk_hashes.resize(m.chunk_count);
     for (auto& h : m.chunk_hashes) {
-        if (!c.take_hash(h)) return std::nullopt;
+        if (!c.take_hash(h))
+            return std::nullopt;
     }
-    if (c.remaining() != 0) return std::nullopt;
+    if (c.remaining() != 0)
+        return std::nullopt;
     return m;
 }
 
@@ -189,16 +209,20 @@ std::vector<std::byte> encode_req_chunks(const ReqChunksMsg& m) {
 }
 
 std::optional<ReqChunksMsg> decode_req_chunks(std::span<const std::byte> payload) {
-    Cursor       c(payload);
+    Cursor c(payload);
     ReqChunksMsg m{};
-    uint32_t     count = 0;
-    if (!c.take_u32(count)) return std::nullopt;
-    if (count > c.remaining() / 4) return std::nullopt;  // bound check
+    uint32_t count = 0;
+    if (!c.take_u32(count))
+        return std::nullopt;
+    if (count > c.remaining() / 4)
+        return std::nullopt;  // bound check
     m.indices.resize(count);
     for (uint32_t i = 0; i < count; ++i) {
-        if (!c.take_u32(m.indices[i])) return std::nullopt;
+        if (!c.take_u32(m.indices[i]))
+            return std::nullopt;
     }
-    if (c.remaining() != 0) return std::nullopt;
+    if (c.remaining() != 0)
+        return std::nullopt;
     return m;
 }
 
@@ -215,10 +239,12 @@ std::vector<std::byte> encode_chunk(const ChunkMsg& m) {
 }
 
 std::optional<ChunkMsg> decode_chunk(std::span<const std::byte> payload) {
-    Cursor   c(payload);
+    Cursor c(payload);
     ChunkMsg m{};
-    if (!c.take_u32 (m.index)) return std::nullopt;
-    if (!c.take_hash(m.hash))  return std::nullopt;
+    if (!c.take_u32(m.index))
+        return std::nullopt;
+    if (!c.take_hash(m.hash))
+        return std::nullopt;
     const auto rest = c.rest();
     m.data.assign(rest.begin(), rest.end());
     return m;
@@ -236,11 +262,14 @@ std::vector<std::byte> encode_complete(const CompleteMsg& m) {
 }
 
 std::optional<CompleteMsg> decode_complete(std::span<const std::byte> payload) {
-    Cursor      c(payload);
+    Cursor c(payload);
     CompleteMsg m{};
-    if (!c.take_hash(m.final_root_hash)) return std::nullopt;
-    if (!c.take_u8  (m.status))          return std::nullopt;
-    if (c.remaining() != 0)              return std::nullopt;
+    if (!c.take_hash(m.final_root_hash))
+        return std::nullopt;
+    if (!c.take_u8(m.status))
+        return std::nullopt;
+    if (c.remaining() != 0)
+        return std::nullopt;
     return m;
 }
 
@@ -257,8 +286,10 @@ std::vector<std::byte> encode_ack(const AckMsg& m) {
 std::optional<AckMsg> decode_ack(std::span<const std::byte> payload) {
     Cursor c(payload);
     AckMsg m{};
-    if (!c.take_u32(m.last_index)) return std::nullopt;
-    if (c.remaining() != 0)        return std::nullopt;
+    if (!c.take_u32(m.last_index))
+        return std::nullopt;
+    if (c.remaining() != 0)
+        return std::nullopt;
     return m;
 }
 
@@ -275,17 +306,21 @@ std::vector<std::byte> encode_error(const ErrorMsg& m) {
 }
 
 std::optional<ErrorMsg> decode_error(std::span<const std::byte> payload) {
-    Cursor   c(payload);
+    Cursor c(payload);
     ErrorMsg m{};
 
     uint16_t code_raw = 0;
-    if (!c.take_u16(code_raw)) return std::nullopt;
+    if (!c.take_u16(code_raw))
+        return std::nullopt;
     m.code = static_cast<ErrorCode>(code_raw);
 
     uint16_t msg_len = 0;
-    if (!c.take_u16(msg_len))                return std::nullopt;
-    if (!c.take_string(msg_len, m.message))  return std::nullopt;
-    if (c.remaining() != 0)                  return std::nullopt;
+    if (!c.take_u16(msg_len))
+        return std::nullopt;
+    if (!c.take_string(msg_len, m.message))
+        return std::nullopt;
+    if (c.remaining() != 0)
+        return std::nullopt;
     return m;
 }
 

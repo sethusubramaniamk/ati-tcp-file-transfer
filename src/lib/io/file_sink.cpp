@@ -13,8 +13,7 @@ std::filesystem::path with_partial_suffix(const std::filesystem::path& p) {
 }  // namespace
 
 FileSink::FileSink(std::filesystem::path final_path)
-    : final_path_(std::move(final_path)),
-      partial_path_(with_partial_suffix(final_path_)) {}
+    : final_path_(std::move(final_path)), partial_path_(with_partial_suffix(final_path_)) {}
 
 bool FileSink::open(uint64_t total_size, bool resume_existing) {
     total_size_ = total_size;
@@ -24,14 +23,14 @@ bool FileSink::open(uint64_t total_size, bool resume_existing) {
 
     if (resume_existing) {
         std::error_code stat_ec;
-        const auto      cur_size = std::filesystem::exists(partial_path_, stat_ec)
-                                       ? std::filesystem::file_size(partial_path_, stat_ec)
-                                       : 0;
+        const auto cur_size = std::filesystem::exists(partial_path_, stat_ec)
+                                  ? std::filesystem::file_size(partial_path_, stat_ec)
+                                  : 0;
         if (!stat_ec && cur_size >= total_size) {
             // Reuse the existing .partial. Open in in/out mode (no trunc).
-            stream_.open(partial_path_,
-                         std::ios::in | std::ios::out | std::ios::binary);
-            if (stream_.is_open()) return true;
+            stream_.open(partial_path_, std::ios::in | std::ios::out | std::ios::binary);
+            if (stream_.is_open())
+                return true;
             // Fall through and reinitialize.
         }
     }
@@ -80,7 +79,8 @@ bool FileSink::write_at(uint64_t offset, std::span<const std::byte> data) {
 }
 
 bool FileSink::flush() {
-    if (!stream_.is_open()) return true;
+    if (!stream_.is_open())
+        return true;
     stream_.flush();
     if (!stream_.good()) {
         last_error_ = "flush failed";
@@ -109,7 +109,8 @@ bool FileSink::finalize() {
 }
 
 void FileSink::close() {
-    if (stream_.is_open()) stream_.close();
+    if (stream_.is_open())
+        stream_.close();
 }
 
 }  // namespace ftx::io

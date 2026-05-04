@@ -1,8 +1,5 @@
 #pragma once
 
-#include <asio.hpp>
-#include <asio/ssl.hpp>
-
 #include <cstddef>
 #include <memory>
 #include <optional>
@@ -10,6 +7,9 @@
 #include <string>
 #include <string_view>
 #include <variant>
+
+#include <asio.hpp>
+#include <asio/ssl.hpp>
 
 #include "ftx/proto/frame.hpp"
 #include "ftx/proto/types.hpp"
@@ -21,7 +21,7 @@ namespace ftx::transport {
 class Connection {
  public:
     using PlainStream = asio::ip::tcp::socket;
-    using TlsStream   = asio::ssl::stream<asio::ip::tcp::socket>;
+    using TlsStream = asio::ssl::stream<asio::ip::tcp::socket>;
 
     // Plain TCP construction.
     explicit Connection(PlainStream socket) noexcept;
@@ -32,9 +32,9 @@ class Connection {
     Connection(PlainStream socket, asio::ssl::context& ctx);
 
     ~Connection();
-    Connection(const Connection&)            = delete;
+    Connection(const Connection&) = delete;
     Connection& operator=(const Connection&) = delete;
-    Connection(Connection&&) noexcept            = default;
+    Connection(Connection&&) noexcept = default;
     Connection& operator=(Connection&&) noexcept = default;
 
     // TLS handshake helpers. No-ops on plain connections (return true).
@@ -55,7 +55,7 @@ class Connection {
     using StreamVariant = std::variant<PlainStream, TlsStream>;
 
     StreamVariant stream_;
-    std::string   last_error_;
+    std::string last_error_;
 };
 
 }  // namespace ftx::transport

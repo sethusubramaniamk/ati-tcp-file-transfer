@@ -41,7 +41,7 @@ bool FileSource::read_at(uint64_t offset, std::span<std::byte> buf, size_t* out_
         return false;
     }
     const uint64_t available = size_ - offset;
-    const size_t   to_read   = static_cast<size_t>(
+    const size_t to_read = static_cast<size_t>(
         (available < buf.size()) ? available : static_cast<uint64_t>(buf.size()));
 
     stream_.clear();  // clear any previous EOF state
@@ -56,12 +56,14 @@ bool FileSource::read_at(uint64_t offset, std::span<std::byte> buf, size_t* out_
         last_error_ = "read short of expected bytes";
         return false;
     }
-    if (out_n != nullptr) *out_n = got;
+    if (out_n != nullptr)
+        *out_n = got;
     return true;
 }
 
 void FileSource::close() {
-    if (stream_.is_open()) stream_.close();
+    if (stream_.is_open())
+        stream_.close();
 }
 
 }  // namespace ftx::io

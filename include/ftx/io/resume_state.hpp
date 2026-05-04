@@ -24,9 +24,9 @@ class ResumeState {
     ResumeState() = default;
     ResumeState(ManifestId id, uint32_t chunk_count);
 
-    [[nodiscard]] uint32_t          chunk_count()       const noexcept { return chunk_count_; }
-    [[nodiscard]] const ManifestId& manifest_id()       const noexcept { return manifest_id_; }
-    [[nodiscard]] bool              is_set(uint32_t i)  const noexcept;
+    [[nodiscard]] uint32_t chunk_count() const noexcept { return chunk_count_; }
+    [[nodiscard]] const ManifestId& manifest_id() const noexcept { return manifest_id_; }
+    [[nodiscard]] bool is_set(uint32_t i) const noexcept;
 
     void mark_received(uint32_t i) noexcept;
 
@@ -47,9 +47,9 @@ class ResumeState {
     static void remove(const std::filesystem::path& path) noexcept;
 
  private:
-    ManifestId            manifest_id_{};
-    uint32_t              chunk_count_ = 0;
-    std::vector<uint8_t>  bitmap_;
+    ManifestId manifest_id_{};
+    uint32_t chunk_count_ = 0;
+    std::vector<uint8_t> bitmap_;
 };
 
 }  // namespace ftx::io
