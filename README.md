@@ -6,7 +6,7 @@ Written for the Ati Motors Platform Engineering assignment.
 
 > Architecture, threat model, perf numbers and the assignment Q&A live in [DESIGN.md](DESIGN.md).
 
-[![ci](https://github.com/sethu1209/ati-file-transfer/actions/workflows/ci.yml/badge.svg)](https://github.com/sethu1209/ati-file-transfer/actions/workflows/ci.yml)
+[![ci](https://github.com/sethusubramaniamk/ati-tcp-file-transfer/actions/workflows/ci.yml/badge.svg)](https://github.com/sethusubramaniamk/ati-tcp-file-transfer/actions/workflows/ci.yml)
 
 ## What it does
 
