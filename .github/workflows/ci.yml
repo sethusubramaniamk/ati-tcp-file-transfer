@@ -120,21 +120,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install cross toolchain
+      - name: Install cross toolchain (host packages)
         run: |
           sudo apt-get update
           sudo apt-get install -y \
               build-essential ninja-build cmake pkg-config \
               gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
-          # Add arm64 multiarch and try to install libssl-dev:arm64; if that
-          # repository is missing on the runner, we fall back to building
-          # without TLS support. The toolchain file disables TLS in that case
-          # via FTX_BUILD_TESTS=OFF (TLS code is in tests/integration only at
-          # CI level).
-          sudo dpkg --add-architecture arm64 || true
-          sudo apt-get update || true
-          sudo apt-get install -y libssl-dev:arm64 || \
-              echo "::warning::libssl-dev:arm64 unavailable, OpenSSL features won't link"
+
+      - name: Add arm64 apt sources (ports.ubuntu.com)
+        run: |
+          # Ubuntu's main archive.ubuntu.com / security.ubuntu.com don't host
+          # arm64 binaries. They live on ports.ubuntu.com. Re-point the existing
+          # sources at amd64-only and add a separate arm64 source list.
+          sudo sed -i 's|^deb http|deb [arch=amd64] http|' /etc/apt/sources.list
+          sudo tee /etc/apt/sources.list.d/arm64-ports.list >/dev/null <<'EOF'
+          deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy main universe restricted multiverse
+          deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-updates main universe restricted multiverse
+          deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-security main universe restricted multiverse
+          EOF
+          sudo dpkg --add-architecture arm64
+          sudo apt-get update
+
+      - name: Install arm64 OpenSSL
+        run: sudo apt-get install -y libssl-dev:arm64
 
       - name: Configure
         run: |
