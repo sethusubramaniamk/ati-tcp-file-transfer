@@ -1,30 +1,32 @@
-# ftx — Secure Cross-Platform TCP File Transfer
+# ftx
 
-A production-grade C++20 utility for transferring files of arbitrary size over TCP with end-to-end integrity, mutual TLS authentication, and resumable transfers. Built as the Ati Motors Platform Engineering assignment.
+A C++20 utility for moving files between two machines over TCP. Does end-to-end integrity (BLAKE3 chunks plus a whole-file root hash), TLS 1.3 with mutual auth, and resumable transfers when the connection drops mid-flight.
 
-> Detailed architecture, threat model, performance numbers, and design-decision Q&A live in [**DESIGN.md**](DESIGN.md).
+Written for the Ati Motors Platform Engineering assignment.
+
+> Architecture, threat model, perf numbers and the assignment Q&A live in [DESIGN.md](DESIGN.md).
 
 [![ci](https://github.com/sethu1209/ati-file-transfer/actions/workflows/ci.yml/badge.svg)](https://github.com/sethu1209/ati-file-transfer/actions/workflows/ci.yml)
 
-## Features
+## What it does
 
-- **Files up to 16 GiB** — validated end-to-end (16 GiB transferred in 142 s, 115 MiB/s, ~30 MiB RSS)
-- **BLAKE3** per-chunk hashes + whole-file Merkle root, cross-checked against MANIFEST and COMPLETE
-- **TLS 1.3 with mutual auth (mTLS)** via OpenSSL 3 — TLS-only by default; `--insecure` opts out for local testing
-- **Resumable**: a `.ftxstate` sidecar lets interrupted transfers pick up exactly where they stopped, re-fetching only missing chunks
-- **Path-traversal hardened**: receiver enforces a `--root` jail
-- **Cross-platform**: single C++20 codebase, Linux / Windows / macOS; CI cross-compiles to ARM64 Linux (Jetson target)
-- **Production hygiene**: 63 tests (unit + integration + fault-injection), ASan + UBSan in CI, `-Werror` gate
+- Streams files of arbitrary size. I tested 16 GiB end-to-end (142 s, 115 MiB/s, peak RSS ~30 MiB).
+- BLAKE3 hashes per chunk, plus a whole-file root that gets cross-checked against MANIFEST and COMPLETE.
+- TLS 1.3 with mutual auth. TLS is on by default; `--insecure` opts out for local poking.
+- If a transfer dies, restart it. The receiver keeps a `.ftxstate` sidecar and only re-fetches the chunks it's missing.
+- Path-traversal jail on the receiver (rejects `..`, absolute paths, paths that escape `--root`).
+- One C++20 source tree, builds on Linux, Windows native, macOS, and cross-compiles to ARM64 Linux for Jetson.
+- 63 tests (unit + integration + fault injection), ASan/UBSan in CI, `-Werror` gate.
 
 ## Quick start
 
 | Platform | Toolchain | OpenSSL | Validated |
 | --- | --- | --- | --- |
-| **Linux (Ubuntu/Debian)** | `apt install build-essential ninja-build cmake pkg-config libssl-dev` | distro package | ✅ primary; full suite + ASan/UBSan + 16 GiB e2e |
+| **Linux (Ubuntu/Debian)** | `apt install build-essential ninja-build cmake pkg-config libssl-dev` | distro package | yes, primary; full suite + ASan/UBSan + 16 GiB e2e |
 | **Linux (Fedora/RHEL)** | `dnf install gcc-c++ ninja-build cmake openssl-devel` | distro package | code-portable; CI matrix |
-| **macOS** | `brew install ninja cmake openssl@3 pkg-config` | Homebrew (keg-only — see below) | code-portable; CI matrix |
-| **Windows native** (MSVC) | Visual Studio 2022 Build Tools + CMake + Ninja + Git | `vcpkg install openssl:x64-windows` | ✅ MSVC 19.44 + OpenSSL 3.6.2, **63/63 tests green locally** |
-| **Windows via WSL** | Same as Linux (Ubuntu) | distro package | ✅ via the Linux path |
+| **macOS** | `brew install ninja cmake openssl@3 pkg-config` | Homebrew (keg-only, see below) | code-portable; CI matrix |
+| **Windows native** (MSVC) | Visual Studio 2022 Build Tools + CMake + Ninja + Git | `vcpkg install openssl:x64-windows` | yes, MSVC 19.44 + OpenSSL 3.6.2, 63/63 tests green locally |
+| **Windows via WSL** | Same as Linux (Ubuntu) | distro package | yes, via the Linux path |
 
 ### Linux / WSL
 
@@ -35,7 +37,7 @@ cmake --preset release
 cmake --build --preset release
 ctest --preset release
 
-# 4. Generate test certificates and try a TLS transfer
+# Generate test certificates and try a TLS transfer
 ./scripts/gen-test-certs.sh ./certs
 
 # Receiver (terminal A)
@@ -55,7 +57,7 @@ ctest --preset release
     --sni      localhost
 ```
 
-For local-only tinkering without TLS:
+Local-only without TLS:
 
 ```bash
 ./build/release/src/ftx serve --listen 127.0.0.1:9000 --root /tmp/recv --insecure &
@@ -78,7 +80,7 @@ ctest --preset release
 
 ### Windows (native, MSVC + vcpkg)
 
-From a **Developer PowerShell for VS 2022** (or Developer Command Prompt — these set up the MSVC environment):
+Open a Developer PowerShell for VS 2022 (or Developer Command Prompt). Either gives you the MSVC environment.
 
 ```powershell
 # 1. One-time: install vcpkg + OpenSSL
@@ -96,25 +98,27 @@ cmake --build build\release --config Release --parallel
 ctest --test-dir build\release -C Release --output-on-failure
 ```
 
-Notes for Windows:
+A few things to know about the Windows build:
 
-- **Bash dependency for tests**: the test-cert generator script is bash. Git for Windows (preinstalled on most dev boxes; install via `winget install Git.Git`) puts `bash.exe` and `openssl.exe` on PATH so the script runs unmodified during the CMake configure/build step. If you don't have Git for Windows, the cert step fails silently — set `-DFTX_BUILD_TESTS=OFF` to skip the tests, or generate certs manually and pass `--tls-cert/--tls-key/--tls-ca` to the binary.
-- **Atomic rename**: NTFS rejects `rename` onto an existing destination; `FileSink::finalize()` already retries with explicit `remove + rename`.
-- **Sparse pre-sizing**: NTFS doesn't have ext4-style sparse files; the receiver's `.partial` is zero-filled instead. Functionally equivalent, just not disk-cheap.
+The test-cert generator script is bash. Git for Windows (preinstalled on most dev boxes; otherwise `winget install Git.Git`) puts `bash.exe` and `openssl.exe` on PATH, and the script runs unmodified during the CMake build step. If you don't have Git for Windows the cert step will fail; either install it, pass `-DFTX_BUILD_TESTS=OFF` to skip the tests entirely, or generate certs yourself and pass them via `--tls-cert`/`--tls-key`/`--tls-ca`.
 
-### Windows (via WSL2 — simplest)
+NTFS rejects `rename` onto an existing destination. `FileSink::finalize()` handles that with an explicit `remove + rename` retry.
 
-If you already have WSL2 with Ubuntu, the Linux/WSL path above runs unmodified. The binary is a native Linux ELF executable inside WSL; from Windows-side tools the build artifacts live under `\\wsl$\Ubuntu\home\<you>\...`.
+NTFS doesn't have ext4-style sparse files, so the receiver's pre-allocated `.partial` is zero-filled instead of sparse. Functionally the same, just costs the disk space upfront.
 
-## Build matrix
+### Windows via WSL2
 
-| Preset             | What you get                                              |
+If you already run WSL2 with Ubuntu, follow the Linux path above and you're done. The build artifacts are native Linux ELFs inside WSL; from Windows-side tools they live under `\\wsl$\Ubuntu\home\<you>\...`.
+
+## Build presets
+
+| Preset             | What it gives you                                         |
 | ------------------ | --------------------------------------------------------- |
-| `release`          | -O3, no sanitizers — production binary                    |
+| `release`          | -O3, no sanitizers                                        |
 | `debug`            | -O0 -g, full assertions                                   |
 | `asan`             | Debug + AddressSanitizer + UBSan                          |
 | `tsan`             | Debug + ThreadSanitizer                                   |
-| `release-strict`   | Release + `-Werror` (used as the warnings gate in CI)     |
+| `release-strict`   | Release + `-Werror` (the warnings gate in CI)             |
 
 ```bash
 cmake --preset asan && cmake --build --preset asan && ctest --preset asan
@@ -122,10 +126,10 @@ cmake --preset asan && cmake --build --preset asan && ctest --preset asan
 
 ## Clean
 
-Each preset writes into its own directory under `build/`. Remove a single preset's outputs, or all of them:
+Each preset writes into its own subdirectory under `build/`. Pick one to clear, or wipe everything:
 
 ```bash
-# clean a single preset (use the directory cmake created)
+# clean a single preset
 rm -rf build/release
 
 # nuke all build outputs (preserves source, certs, deps cache)
@@ -135,13 +139,13 @@ rm -rf build/
 rm -rf build/ certs/ .cache/
 ```
 
-CMake's per-preset `clean` target works for object files (not for fetched deps):
+CMake's per-preset `clean` target works for object files but not the fetched deps:
 
 ```bash
 cmake --build --preset release --target clean
 ```
 
-## Cross-compile to ARM64 Linux (Nvidia Jetson)
+## Cross-compile to ARM64 Linux (Jetson)
 
 ```bash
 sudo apt install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
@@ -163,7 +167,7 @@ cmake --build --preset release
 ./build/release/bench/ftx_bench 256       # 256 MiB transfer × 4 chunk sizes
 ```
 
-Recent numbers on WSL2 / g++ 11.4 / loopback:
+Numbers from my box (WSL2, g++ 11.4, loopback):
 
 | chunk_size | throughput  |
 | ---------: | ----------- |
@@ -172,13 +176,13 @@ Recent numbers on WSL2 / g++ 11.4 / loopback:
 | 1 MiB      | 133.3 MiB/s |
 | 4 MiB      | 137.1 MiB/s |
 
-See [DESIGN.md §8](DESIGN.md#8-performance) for the analysis.
+The analysis (and what's leaving perf on the table) is in [DESIGN.md §8](DESIGN.md#8-performance).
 
 ## Layout
 
 ```
 ati-file-transfer/
-├── CMakeLists.txt              top-level build, sanitizer hooks, summary block
+├── CMakeLists.txt              top-level build, sanitizer hooks, summary
 ├── CMakePresets.json           release / debug / asan / tsan / release-strict
 ├── .github/workflows/ci.yml    Linux x64 (×3 modes) + aarch64 cross-compile
 ├── cmake/toolchains/           aarch64-linux-gnu.cmake
@@ -194,7 +198,7 @@ ati-file-transfer/
 ├── bench/                      throughput probe
 ├── scripts/                    gen-test-certs.sh, smoke_e2e.sh
 ├── DESIGN.md                   architecture, threat model, perf, design Q&A
-└── README.md                   ← you are here
+└── README.md                   (you are here)
 ```
 
 ## CLI reference
@@ -212,8 +216,8 @@ Common TLS options (both subcommands):
   --tls-key  PATH       PEM private key for --tls-cert
   --tls-ca   PATH       PEM bundle of trusted CAs (peer verification)
   --no-verify-peer      do not require / verify a peer certificate
-  --sni HOST            client only — server name to send + verify against
-  --insecure            disable TLS entirely (plain TCP — local testing only)
+  --sni HOST            client only, server name to send + verify against
+  --insecure            disable TLS entirely (plain TCP, local testing only)
 
 ftx serve --listen H:P --root DIR
 ftx send  H:P SOURCE [--out PATH] [--chunk-size BYTES]
@@ -245,4 +249,4 @@ Coverage by suite:
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT, see [LICENSE](LICENSE).
