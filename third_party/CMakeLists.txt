@@ -89,11 +89,22 @@ if(NOT blake3_POPULATED)
     FetchContent_Populate(blake3)
 endif()
 
-add_library(blake3 STATIC
+set(_BLAKE3_SOURCES
     ${blake3_SOURCE_DIR}/c/blake3.c
     ${blake3_SOURCE_DIR}/c/blake3_dispatch.c
     ${blake3_SOURCE_DIR}/c/blake3_portable.c
 )
+
+# On aarch64, blake3_dispatch.c unconditionally calls into the NEON path;
+# adding blake3_neon.c gives us SIMD acceleration on Jetson and resolves
+# the link symbol. On other arches we stay portable-only (SSE/AVX disabled
+# below) — the SIMD asm files require nasm or specific compiler flags we
+# don't want to pull in for a baseline build.
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64")
+    list(APPEND _BLAKE3_SOURCES ${blake3_SOURCE_DIR}/c/blake3_neon.c)
+endif()
+
+add_library(blake3 STATIC ${_BLAKE3_SOURCES})
 target_include_directories(blake3 SYSTEM PUBLIC ${blake3_SOURCE_DIR}/c)
 target_compile_definitions(blake3 PUBLIC
     BLAKE3_NO_SSE2
