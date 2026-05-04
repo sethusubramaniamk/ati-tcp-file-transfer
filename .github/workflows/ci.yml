@@ -114,10 +114,53 @@ jobs:
       - name: Build (-Werror)
         run: cmake --build --preset release-strict --parallel
 
-# aarch64 cross-compile is documented in the README and the cmake/toolchains
-# file. We don't run it in CI: the GitHub-hosted ubuntu-22.04 runner uses an
-# apt-mirrors.txt file that pulls arm64 indexes from security.ubuntu.com, which
-# 404s for arm64 (those binaries live on ports.ubuntu.com). Working around the
-# mirrorlist is enough YAML acrobatics that it's not worth the noise. Run the
-# cross-compile locally per the README; CI proves the code is portable via the
-# Linux x64, macOS, and Windows jobs.
+  cross-aarch64:
+    # ARM64 / Jetson is Ati's deployment target, so this build matters.
+    name: linux-aarch64 / cross-compile (build only)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install host-side cross toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+              build-essential ninja-build cmake pkg-config \
+              gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+
+      - name: Replace apt sources for arm64 multiarch
+        run: |
+          # The github-hosted runner's /etc/apt/sources.list uses
+          # `mirror+file:/etc/apt/apt-mirrors.txt`, which transparently retries
+          # against security.ubuntu.com. That archive doesn't host arm64
+          # (those binaries live on ports.ubuntu.com), so adding arm64
+          # multiarch on top of it 404s on every Packages file.
+          # Solution: replace the sources entirely with explicit per-arch URIs.
+          sudo rm -f /etc/apt/sources.list.d/ubuntu.sources
+          sudo tee /etc/apt/sources.list >/dev/null <<'EOF'
+          deb [arch=amd64] http://azure.archive.ubuntu.com/ubuntu jammy main universe restricted multiverse
+          deb [arch=amd64] http://azure.archive.ubuntu.com/ubuntu jammy-updates main universe restricted multiverse
+          deb [arch=amd64] http://azure.archive.ubuntu.com/ubuntu jammy-backports main universe restricted multiverse
+          deb [arch=amd64] http://azure.archive.ubuntu.com/ubuntu jammy-security main universe restricted multiverse
+          deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy main universe restricted multiverse
+          deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-updates main universe restricted multiverse
+          deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-security main universe restricted multiverse
+          EOF
+          sudo dpkg --add-architecture arm64
+          sudo apt-get update
+
+      - name: Install arm64 OpenSSL
+        run: sudo apt-get install -y libssl-dev:arm64
+
+      - name: Configure
+        run: |
+          cmake -S . -B build/cross-aarch64 -G Ninja \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_TOOLCHAIN_FILE=$PWD/cmake/toolchains/aarch64-linux-gnu.cmake \
+              -DFTX_BUILD_TESTS=OFF
+
+      - name: Build
+        run: cmake --build build/cross-aarch64 --parallel
+
+      - name: Show binary architecture
+        run: file build/cross-aarch64/src/ftx
