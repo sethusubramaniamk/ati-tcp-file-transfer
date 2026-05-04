@@ -2,6 +2,9 @@ include(GoogleTest)
 
 add_executable(ftx_unit_tests
     smoke_test.cpp
+    util/crc32c_test.cpp
+    proto/frame_test.cpp
+    proto/decoder_test.cpp
 )
 
 target_link_libraries(ftx_unit_tests

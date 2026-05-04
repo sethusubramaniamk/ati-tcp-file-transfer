@@ -3,6 +3,10 @@
 # ---------------------------------------------------------------------------
 add_library(ftx_lib STATIC
     lib/version.cpp
+    lib/util/crc32c.cpp
+    lib/proto/types.cpp
+    lib/proto/frame.cpp
+    lib/proto/decoder.cpp
 )
 
 target_include_directories(ftx_lib
