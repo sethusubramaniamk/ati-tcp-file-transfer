@@ -66,8 +66,12 @@ target_compile_definitions(asio INTERFACE
 find_package(Threads REQUIRED)
 target_link_libraries(asio INTERFACE Threads::Threads)
 
+# OpenSSL for asio::ssl::*.
+find_package(OpenSSL 3.0 REQUIRED)
+target_link_libraries(asio INTERFACE OpenSSL::SSL OpenSSL::Crypto)
+
 if(WIN32)
-    target_link_libraries(asio INTERFACE ws2_32 mswsock)
+    target_link_libraries(asio INTERFACE ws2_32 mswsock crypt32)
     target_compile_definitions(asio INTERFACE _WIN32_WINNT=0x0A00)
 endif()
 

@@ -12,6 +12,7 @@ add_library(ftx_lib STATIC
     lib/io/file_source.cpp
     lib/io/file_sink.cpp
     lib/transport/connection.cpp
+    lib/transport/tls.cpp
     lib/transport/server.cpp
     lib/transport/client.cpp
 )

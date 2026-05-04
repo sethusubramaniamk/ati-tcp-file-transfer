@@ -3,16 +3,20 @@
 #include <asio.hpp>
 #include <cstdint>
 #include <filesystem>
+#include <optional>
 #include <string>
+
+#include "ftx/transport/tls.hpp"
 
 namespace ftx::transport {
 
 struct ClientOptions {
-    uint32_t chunk_size = 1u * 1024 * 1024;  // 1 MiB default
+    uint32_t                 chunk_size = 1u * 1024 * 1024;
+    std::optional<TlsConfig> tls;        ///< nullopt = plain TCP
 };
 
-// File-sender client. Phase 2: synchronous, blocking, single transfer per
-// instance. Returns true on a complete & ACK'd transfer.
+// File-sender client. Phase 2/3/4: synchronous, blocking, single transfer
+// per call. Returns true on a complete & ACK'd transfer.
 class Client {
  public:
     using Options = ClientOptions;

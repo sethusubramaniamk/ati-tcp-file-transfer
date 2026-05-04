@@ -4,9 +4,12 @@
 
 #include <vector>
 
+#include <memory>
+
 #include "ftx/io/file_source.hpp"
 #include "ftx/proto/messages.hpp"
 #include "ftx/transport/connection.hpp"
+#include "ftx/transport/tls.hpp"
 #include "ftx/util/blake3.hpp"
 
 namespace ftx::transport {
@@ -48,7 +51,20 @@ bool Client::send(const std::string& host,
         return false;
     }
 
-    Connection conn(std::move(socket));
+    std::unique_ptr<asio::ssl::context> ssl_ctx;
+    if (opts_.tls.has_value()) {
+        ssl_ctx = make_client_tls_context(*opts_.tls);
+    }
+
+    auto conn = ssl_ctx ? Connection(std::move(socket), *ssl_ctx)
+                        : Connection(std::move(socket));
+    if (ssl_ctx) {
+        const std::string sni = opts_.tls->sni_host.empty() ? host : opts_.tls->sni_host;
+        if (!conn.tls_client_handshake(sni)) {
+            last_error_ = "TLS handshake: " + conn.last_error();
+            return false;
+        }
+    }
 
     // 3. HELLO exchange.
     if (!conn.send_frame(proto::FrameType::Hello, proto::encode_hello(proto::HelloMsg{}))) {

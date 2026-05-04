@@ -34,6 +34,13 @@ void send_error(Connection& conn, proto::ErrorCode code, const std::string& msg)
 
 }  // namespace
 
+void Server::open_acceptor_(const asio::ip::tcp::endpoint& endpoint) {
+    acceptor_.open(endpoint.protocol());
+    acceptor_.set_option(asio::socket_base::reuse_address(true));
+    acceptor_.bind(endpoint);
+    acceptor_.listen();
+}
+
 Server::Server(asio::io_context& io,
                const asio::ip::tcp::endpoint& endpoint,
                std::filesystem::path root)
@@ -42,13 +49,20 @@ Server::Server(asio::io_context& io,
       root_(std::move(root)) {
     std::error_code ec;
     std::filesystem::create_directories(root_, ec);  // best-effort
+    open_acceptor_(endpoint);
+}
 
-    // Open + set SO_REUSEADDR + bind + listen, so we don't get "Address already
-    // in use" for ~60s after a previous run on the same port.
-    acceptor_.open(endpoint.protocol());
-    acceptor_.set_option(asio::socket_base::reuse_address(true));
-    acceptor_.bind(endpoint);
-    acceptor_.listen();
+Server::Server(asio::io_context& io,
+               const asio::ip::tcp::endpoint& endpoint,
+               std::filesystem::path root,
+               TlsConfig tls)
+    : io_(io),
+      acceptor_(io),
+      root_(std::move(root)),
+      ssl_ctx_(make_server_tls_context(tls)) {
+    std::error_code ec;
+    std::filesystem::create_directories(root_, ec);
+    open_acceptor_(endpoint);
 }
 
 uint16_t Server::local_port() const noexcept {
@@ -100,7 +114,15 @@ bool Server::resolve_dest_(const std::string& rel_path,
 }
 
 bool Server::handle_session_(asio::ip::tcp::socket socket) {
-    Connection conn(std::move(socket));
+    auto conn = ssl_ctx_
+                    ? Connection(std::move(socket), *ssl_ctx_)
+                    : Connection(std::move(socket));
+    if (ssl_ctx_) {
+        if (!conn.tls_server_handshake()) {
+            spdlog::warn("session: TLS handshake failed: {}", conn.last_error());
+            return false;
+        }
+    }
 
     // 1. HELLO exchange.
     auto hello_frame = conn.recv_frame();
