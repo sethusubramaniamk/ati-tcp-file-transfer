@@ -44,6 +44,58 @@ jobs:
       - name: Test
         run: ctest --preset ${{ matrix.preset }} --output-on-failure
 
+  macos:
+    name: macos-13 / release
+    runs-on: macos-13
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: |
+          brew update
+          brew install ninja cmake openssl@3 pkg-config
+          # macOS keeps OpenSSL keg-only; expose it to CMake.
+          echo "OPENSSL_ROOT_DIR=$(brew --prefix openssl@3)" >> $GITHUB_ENV
+          echo "PKG_CONFIG_PATH=$(brew --prefix openssl@3)/lib/pkgconfig" >> $GITHUB_ENV
+
+      - name: Configure
+        run: cmake --preset release
+
+      - name: Build
+        run: cmake --build --preset release --parallel
+
+      - name: Test
+        run: ctest --preset release --output-on-failure
+
+  windows:
+    name: windows-2022 / release
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install OpenSSL via vcpkg
+        shell: pwsh
+        run: |
+          # vcpkg is preinstalled on GitHub windows runners under VCPKG_INSTALLATION_ROOT.
+          & "$env:VCPKG_INSTALLATION_ROOT/vcpkg.exe" install openssl:x64-windows
+          echo "VCPKG_ROOT=$env:VCPKG_INSTALLATION_ROOT" >> $env:GITHUB_ENV
+          echo "CMAKE_TOOLCHAIN_FILE=$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" >> $env:GITHUB_ENV
+
+      - name: Configure
+        shell: pwsh
+        run: |
+          cmake -S . -B build/release -G "Visual Studio 17 2022" -A x64 `
+              -DCMAKE_TOOLCHAIN_FILE="$env:CMAKE_TOOLCHAIN_FILE" `
+              -DVCPKG_TARGET_TRIPLET=x64-windows
+
+      - name: Build
+        shell: pwsh
+        run: cmake --build build/release --config Release --parallel
+
+      - name: Test
+        shell: pwsh
+        run: ctest --test-dir build/release -C Release --output-on-failure
+
   warnings-as-errors:
     name: linux-x64 / -Werror
     runs-on: ubuntu-22.04
@@ -62,11 +114,6 @@ jobs:
       - name: Build (-Werror)
         run: cmake --build --preset release-strict --parallel
 
-      - name: Test
-        run: ctest --preset release --output-on-failure || true
-        # release tests already run in matrix above; this job is purely
-        # a "does the project compile clean under -Werror" gate.
-
   cross-aarch64:
     name: linux-aarch64 / cross-compile (build only)
     runs-on: ubuntu-22.04
@@ -78,25 +125,26 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
               build-essential ninja-build cmake pkg-config \
-              gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
-              libssl-dev:arm64 || true
-          # The libssl-dev:arm64 package requires multiarch — fall back to
-          # installing the host libssl-dev only and skipping TLS code path
-          # for the cross build if multiarch isn't available.
+              gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+          # Add arm64 multiarch and try to install libssl-dev:arm64; if that
+          # repository is missing on the runner, we fall back to building
+          # without TLS support. The toolchain file disables TLS in that case
+          # via FTX_BUILD_TESTS=OFF (TLS code is in tests/integration only at
+          # CI level).
           sudo dpkg --add-architecture arm64 || true
           sudo apt-get update || true
           sudo apt-get install -y libssl-dev:arm64 || \
               echo "::warning::libssl-dev:arm64 unavailable, OpenSSL features won't link"
 
       - name: Configure
-        run: cmake -S . -B build/cross-aarch64 -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_TOOLCHAIN_FILE=$PWD/cmake/toolchains/aarch64-linux-gnu.cmake \
-            -DFTX_BUILD_TESTS=OFF
+        run: |
+          cmake -S . -B build/cross-aarch64 -G Ninja \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_TOOLCHAIN_FILE=$PWD/cmake/toolchains/aarch64-linux-gnu.cmake \
+              -DFTX_BUILD_TESTS=OFF
 
       - name: Build
         run: cmake --build build/cross-aarch64 --parallel
 
       - name: Show binary architecture
-        run: |
-          file build/cross-aarch64/src/ftx
+        run: file build/cross-aarch64/src/ftx

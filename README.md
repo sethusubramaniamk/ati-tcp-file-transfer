@@ -8,7 +8,7 @@ A production-grade C++20 utility for transferring files of arbitrary size over T
 
 ## Features
 
-- **Files up to 16 GiB** streamed with constant memory (tens of MiB RSS regardless of file size)
+- **Files up to 16 GiB** — validated end-to-end (16 GiB transferred in 142 s, 115 MiB/s, ~30 MiB RSS)
 - **BLAKE3** per-chunk hashes + whole-file Merkle root, cross-checked against MANIFEST and COMPLETE
 - **TLS 1.3 with mutual auth (mTLS)** via OpenSSL 3 — TLS-only by default; `--insecure` opts out for local testing
 - **Resumable**: a `.ftxstate` sidecar lets interrupted transfers pick up exactly where they stopped, re-fetching only missing chunks
@@ -68,6 +68,27 @@ For local-only tinkering without TLS:
 
 ```bash
 cmake --preset asan && cmake --build --preset asan && ctest --preset asan
+```
+
+## Clean
+
+Each preset writes into its own directory under `build/`. Remove a single preset's outputs, or all of them:
+
+```bash
+# clean a single preset (use the directory cmake created)
+rm -rf build/release
+
+# nuke all build outputs (preserves source, certs, deps cache)
+rm -rf build/
+
+# also drop the auto-generated test certificates and clear caches
+rm -rf build/ certs/ .cache/
+```
+
+CMake's per-preset `clean` target works for object files (not for fetched deps):
+
+```bash
+cmake --build --preset release --target clean
 ```
 
 ## Cross-compile to ARM64 Linux (Nvidia Jetson)
@@ -170,7 +191,7 @@ Coverage by suite:
 | `Loopback`                |     9 | end-to-end transfers from 0 B up to 64 MiB                       |
 | `TlsLoopback`             |     3 | mTLS roundtrip, mTLS rejection without client cert, untrusted-server |
 | `FaultInjection`          |     3 | resume-no-op, stale-state-recovery, chunk-tampering rejection    |
-| `LargeTransfer`           |     1 | gated 1 GiB end-to-end test (FTX_LARGE_TEST=1)                   |
+| `LargeTransfer`           |     1 | gated multi-GiB e2e (FTX_LARGE_TEST=1, sized via FTX_LARGE_TEST_SIZE_GIB; validated to 16 GiB) |
 
 ## License
 

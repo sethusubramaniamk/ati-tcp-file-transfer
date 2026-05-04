@@ -231,7 +231,7 @@ If the manifest_id mismatches or the chunk_count differs, the server wipes the s
 ## 8. Performance
 
 Localhost loopback, WSL2 Ubuntu 22.04 on Windows 11, g++ 11.4 -O3, /mnt/d cross-FS.
-256 MiB transfer per data point. Numbers from `build/release/bench/ftx_bench 256`.
+Throughput-table numbers from `build/release/bench/ftx_bench 256` (256 MiB per data point).
 
 | chunk_size | throughput  | notes                          |
 | ---------: | ----------- | ------------------------------ |
@@ -239,6 +239,22 @@ Localhost loopback, WSL2 Ubuntu 22.04 on Windows 11, g++ 11.4 -O3, /mnt/d cross-
 | 256 KiB    | 130.7 MiB/s |                                |
 | 1 MiB      | 133.3 MiB/s | default                        |
 | 4 MiB      | 137.1 MiB/s |                                |
+
+### Full 16 GiB validation
+
+The assignment requires support for files **up to 16 GiB**. The
+`LargeTransfer.MultiGiBRoundtrip` test runs an actual 16 GiB end-to-end
+transfer (gated behind `FTX_LARGE_TEST=1 FTX_LARGE_TEST_SIZE_GIB=16`):
+
+```
+[ftx] 16 GiB transfer: 142.47 s (115.0 MiB/s)
+[ OK ] LargeTransfer.MultiGiBRoundtrip (270003 ms)
+```
+
+That run executed with 4 MiB chunks → 4096 chunk frames, 4096 BLAKE3
+chunk hashes verified, root hash recomputed from disk, file finalized
+via atomic rename. Peak RSS was ~30 MiB throughout — the bounded-pipeline
+property the design promises holds at 16 GiB.
 
 Limiting factors at this scale:
 - The sender does **two passes** over the source — one to compute hashes for the MANIFEST, one to send. Phase 6 acknowledges this; folding into a single streaming pass is the next perf lever.

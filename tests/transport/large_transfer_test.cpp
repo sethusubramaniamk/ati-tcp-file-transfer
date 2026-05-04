@@ -27,6 +27,18 @@ bool large_test_enabled() {
     return env != nullptr && std::strlen(env) > 0 && env[0] != '0';
 }
 
+// Honour FTX_LARGE_TEST_SIZE_GIB to scale the test up to 16 GiB without
+// recompiling. Defaults to 1 GiB when unset.
+uint64_t large_test_size_bytes() {
+    const char* env = std::getenv("FTX_LARGE_TEST_SIZE_GIB");
+    uint64_t    gib = 1;
+    if (env != nullptr && std::strlen(env) > 0) {
+        gib = std::strtoull(env, nullptr, 10);
+        if (gib == 0) gib = 1;
+    }
+    return gib * 1024ull * 1024ull * 1024ull;
+}
+
 fs::path mk_temp_dir(const std::string& tag) {
     const auto stamp =
         static_cast<uint64_t>(std::chrono::steady_clock::now().time_since_epoch().count());
@@ -75,13 +87,14 @@ bool files_equal(const fs::path& a, const fs::path& b) {
     return true;
 }
 
-TEST(LargeTransfer, OneGiBRoundtrip) {
+TEST(LargeTransfer, MultiGiBRoundtrip) {
     if (!large_test_enabled()) {
-        GTEST_SKIP() << "set FTX_LARGE_TEST=1 to enable 1 GiB transfer";
+        GTEST_SKIP() << "set FTX_LARGE_TEST=1 to enable; "
+                        "FTX_LARGE_TEST_SIZE_GIB=N picks the size (default 1, validated to 16)";
     }
 
-    constexpr uint64_t kSize = 1ull * 1024 * 1024 * 1024;
-    const auto work = mk_temp_dir("1gib");
+    const uint64_t kSize = large_test_size_bytes();
+    const auto work = mk_temp_dir("nGiB");
     const auto root = work / "recv";
     const auto src = work / "src.bin";
     fs::create_directories(root);
@@ -110,7 +123,10 @@ TEST(LargeTransfer, OneGiBRoundtrip) {
 
     const auto secs = std::chrono::duration<double>(t1 - t0).count();
     const auto mibps = (static_cast<double>(kSize) / (1024.0 * 1024.0)) / secs;
-    std::printf("\n[ftx] 1 GiB transfer: %.2f s (%.1f MiB/s)\n", secs, mibps);
+    std::printf("\n[ftx] %.0f GiB transfer: %.2f s (%.1f MiB/s)\n",
+                static_cast<double>(kSize) / (1024.0 * 1024.0 * 1024.0),
+                secs,
+                mibps);
 
     EXPECT_TRUE(files_equal(src, root / "big.bin"));
 
