@@ -1,0 +1,46 @@
+# Build artifacts
+build/
+out/
+cmake-build-*/
+.cache/
+compile_commands.json
+
+# IDE
+.vscode/
+.idea/
+.vs/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Compiled
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.so.*
+*.dylib
+*.dll
+*.exe
+*.pdb
+
+# Test outputs
+Testing/
+
+# Generated certs (only test certs, never commit any)
+certs/
+*.pem
+*.key
+*.crt
+*.csr
+
+# Coverage
+*.gcda
+*.gcno
+*.profraw
+coverage/

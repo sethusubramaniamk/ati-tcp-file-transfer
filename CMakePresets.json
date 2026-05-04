@@ -1,0 +1,85 @@
+{
+    "version": 3,
+    "cmakeMinimumRequired": {"major": 3, "minor": 22, "patch": 0},
+    "configurePresets": [
+        {
+            "name": "base",
+            "hidden": true,
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build/${presetName}",
+            "cacheVariables": {
+                "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+            }
+        },
+        {
+            "name": "release",
+            "displayName": "Release",
+            "inherits": "base",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release"
+            }
+        },
+        {
+            "name": "debug",
+            "displayName": "Debug",
+            "inherits": "base",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug"
+            }
+        },
+        {
+            "name": "asan",
+            "displayName": "Debug + ASan + UBSan",
+            "inherits": "base",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "FTX_ENABLE_ASAN": "ON",
+                "FTX_ENABLE_UBSAN": "ON"
+            }
+        },
+        {
+            "name": "tsan",
+            "displayName": "Debug + TSan",
+            "inherits": "base",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "FTX_ENABLE_TSAN": "ON"
+            }
+        },
+        {
+            "name": "release-strict",
+            "displayName": "Release + warnings as errors",
+            "inherits": "release",
+            "cacheVariables": {
+                "FTX_WARN_AS_ERROR": "ON"
+            }
+        }
+    ],
+    "buildPresets": [
+        {"name": "release",        "configurePreset": "release"},
+        {"name": "debug",          "configurePreset": "debug"},
+        {"name": "asan",           "configurePreset": "asan"},
+        {"name": "tsan",           "configurePreset": "tsan"},
+        {"name": "release-strict", "configurePreset": "release-strict"}
+    ],
+    "testPresets": [
+        {
+            "name": "release",
+            "configurePreset": "release",
+            "output": {"outputOnFailure": true},
+            "execution": {"jobs": 4}
+        },
+        {
+            "name": "debug",
+            "configurePreset": "debug",
+            "output": {"outputOnFailure": true},
+            "execution": {"jobs": 4}
+        },
+        {
+            "name": "asan",
+            "configurePreset": "asan",
+            "output": {"outputOnFailure": true},
+            "execution": {"jobs": 4}
+        }
+    ]
+}
