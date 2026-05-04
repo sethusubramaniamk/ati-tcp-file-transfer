@@ -70,3 +70,31 @@ if(WIN32)
     target_link_libraries(asio INTERFACE ws2_32 mswsock)
     target_compile_definitions(asio INTERFACE _WIN32_WINNT=0x0A00)
 endif()
+
+# ---- BLAKE3 (official C reference impl) -----------------------------------
+# We compile the portable C source ourselves to keep the build simple and
+# warning-clean. Phase 8 may switch to SIMD-accelerated variants.
+FetchContent_Declare(
+    blake3
+    GIT_REPOSITORY https://github.com/BLAKE3-team/BLAKE3.git
+    GIT_TAG        1.5.1
+    GIT_SHALLOW    TRUE
+)
+FetchContent_GetProperties(blake3)
+if(NOT blake3_POPULATED)
+    FetchContent_Populate(blake3)
+endif()
+
+add_library(blake3 STATIC
+    ${blake3_SOURCE_DIR}/c/blake3.c
+    ${blake3_SOURCE_DIR}/c/blake3_dispatch.c
+    ${blake3_SOURCE_DIR}/c/blake3_portable.c
+)
+target_include_directories(blake3 SYSTEM PUBLIC ${blake3_SOURCE_DIR}/c)
+target_compile_definitions(blake3 PUBLIC
+    BLAKE3_NO_SSE2
+    BLAKE3_NO_SSE41
+    BLAKE3_NO_AVX2
+    BLAKE3_NO_AVX512
+)
+set_target_properties(blake3 PROPERTIES POSITION_INDEPENDENT_CODE ON)

@@ -4,7 +4,7 @@ project(ftx
     VERSION 0.1.0
     DESCRIPTION "Cross-platform secure TCP file transfer utility"
     HOMEPAGE_URL "https://github.com/"
-    LANGUAGES CXX
+    LANGUAGES C CXX
 )
 
 # ---------------------------------------------------------------------------

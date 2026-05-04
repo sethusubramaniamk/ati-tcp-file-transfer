@@ -7,6 +7,7 @@
 #include "ftx/io/file_source.hpp"
 #include "ftx/proto/messages.hpp"
 #include "ftx/transport/connection.hpp"
+#include "ftx/util/blake3.hpp"
 
 namespace ftx::transport {
 
@@ -70,21 +71,45 @@ bool Client::send(const std::string& host,
         return false;
     }
 
-    // 4. Send MANIFEST. Phase 2: hashes all zero.
+    // 4. First pass: read the file once to compute per-chunk hashes and the
+    //    whole-file root hash. We pay an extra read of the source here so the
+    //    MANIFEST can carry the full hash inventory upfront — this enables the
+    //    receiver to verify each chunk on arrival and the resume protocol
+    //    (phase 5) to ask for specific missing chunks. Phase 6 will fold
+    //    this into a single streaming pass.
+    std::vector<proto::Hash> chunk_hashes(chunk_count);
+    Blake3Hasher             root_hasher;
+    {
+        std::vector<std::byte> scratch(chunk_size);
+        for (uint32_t i = 0; i < chunk_count; ++i) {
+            const uint64_t offset = static_cast<uint64_t>(i) * chunk_size;
+            size_t         n      = 0;
+            if (!src.read_at(offset, scratch, &n)) {
+                last_error_ = "hash pass: " + src.last_error();
+                return false;
+            }
+            const auto chunk_view = std::span<const std::byte>(scratch.data(), n);
+            chunk_hashes[i]       = blake3(chunk_view);
+            root_hasher.update(chunk_view);
+        }
+    }
+    const proto::Hash root_hash = root_hasher.finalize();
+
     proto::ManifestMsg manifest;
-    manifest.file_size   = file_size;
-    manifest.chunk_size  = chunk_size;
-    manifest.chunk_count = chunk_count;
-    manifest.path        = remote_dest;
-    manifest.chunk_hashes.resize(chunk_count, proto::kZeroHash);
-    // root_hash stays zero in phase 2.
+    manifest.file_size    = file_size;
+    manifest.chunk_size   = chunk_size;
+    manifest.chunk_count  = chunk_count;
+    manifest.root_hash    = root_hash;
+    manifest.path         = remote_dest;
+    manifest.chunk_hashes = chunk_hashes;
 
     if (!conn.send_frame(proto::FrameType::Manifest, proto::encode_manifest(manifest))) {
         last_error_ = "send MANIFEST: " + conn.last_error();
         return false;
     }
 
-    // 5. CHUNK loop.
+    // 5. CHUNK loop — second pass over the file, attaching the precomputed
+    //    hash to each frame.
     std::vector<std::byte> buf(chunk_size);
     for (uint32_t i = 0; i < chunk_count; ++i) {
         const uint64_t offset = static_cast<uint64_t>(i) * chunk_size;
@@ -95,8 +120,8 @@ bool Client::send(const std::string& host,
         }
         proto::ChunkMsg chunk;
         chunk.index = i;
+        chunk.hash  = chunk_hashes[i];
         chunk.data.assign(buf.begin(), buf.begin() + static_cast<std::ptrdiff_t>(n));
-        // chunk.hash stays zero in phase 2.
 
         if (!conn.send_frame(proto::FrameType::Chunk, proto::encode_chunk(chunk))) {
             last_error_ = "send CHUNK[" + std::to_string(i) + "]: " + conn.last_error();
@@ -104,9 +129,11 @@ bool Client::send(const std::string& host,
         }
     }
 
-    // 6. COMPLETE.
-    if (!conn.send_frame(proto::FrameType::Complete,
-                         proto::encode_complete(proto::CompleteMsg{}))) {
+    // 6. COMPLETE — carries the same root_hash for end-of-stream verification.
+    proto::CompleteMsg complete;
+    complete.final_root_hash = root_hash;
+    complete.status          = 0;
+    if (!conn.send_frame(proto::FrameType::Complete, proto::encode_complete(complete))) {
         last_error_ = "send COMPLETE: " + conn.last_error();
         return false;
     }

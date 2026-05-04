@@ -2,11 +2,14 @@
 
 #include <spdlog/spdlog.h>
 
+#include <fstream>
 #include <system_error>
+#include <vector>
 
 #include "ftx/io/file_sink.hpp"
 #include "ftx/proto/messages.hpp"
 #include "ftx/transport/connection.hpp"
+#include "ftx/util/blake3.hpp"
 
 namespace ftx::transport {
 
@@ -150,9 +153,17 @@ bool Server::handle_session_(asio::ip::tcp::socket socket) {
         return false;
     }
 
-    // 3. CHUNK loop until COMPLETE.
-    uint64_t bytes_received = 0;
-    uint32_t chunks_received = 0;
+    // 3. CHUNK loop until COMPLETE. Hash each chunk against the manifest's
+    //    declared hash, accumulate the root hash incrementally for chunks that
+    //    arrive in order (which is the phase 2/3 case). For out-of-order
+    //    arrivals (phase 5 resume) we recompute the root hash from disk after
+    //    the loop.
+    uint64_t      bytes_received  = 0;
+    uint32_t      chunks_received = 0;
+    Blake3Hasher  inorder_root_hasher;
+    bool          all_in_order    = true;
+    uint32_t      next_expected   = 0;
+    proto::Hash   client_final_root_hash{};
     while (true) {
         auto frame = conn.recv_frame();
         if (!frame) {
@@ -160,12 +171,12 @@ bool Server::handle_session_(asio::ip::tcp::socket socket) {
             return false;
         }
         if (frame->header.type == proto::FrameType::Complete) {
-            // Done — fall through to finalization.
             const auto complete = proto::decode_complete(frame->payload);
             if (!complete) {
                 send_error(conn, proto::ErrorCode::ProtocolViolation, "malformed COMPLETE");
                 return false;
             }
+            client_final_root_hash = complete->final_root_hash;
             break;
         }
         if (frame->header.type != proto::FrameType::Chunk) {
@@ -185,7 +196,27 @@ bool Server::handle_session_(asio::ip::tcp::socket socket) {
             return false;
         }
 
-        // Phase 3 will verify chunk->hash here against BLAKE3(data).
+        // Per-chunk integrity check against BLAKE3(data).
+        const auto computed = blake3(chunk->data);
+        if (computed != chunk->hash) {
+            send_error(conn, proto::ErrorCode::HashMismatch,
+                       "chunk hash mismatch at index " + std::to_string(chunk->index));
+            return false;
+        }
+        // Cross-check against the manifest's declared chunk hash.
+        if (manifest->chunk_hashes[chunk->index] != chunk->hash) {
+            send_error(conn, proto::ErrorCode::HashMismatch,
+                       "chunk hash diverges from manifest at index " +
+                           std::to_string(chunk->index));
+            return false;
+        }
+
+        if (all_in_order && chunk->index == next_expected) {
+            inorder_root_hasher.update(chunk->data);
+            ++next_expected;
+        } else {
+            all_in_order = false;
+        }
 
         const uint64_t offset =
             static_cast<uint64_t>(chunk->index) * manifest->chunk_size;
@@ -197,7 +228,7 @@ bool Server::handle_session_(asio::ip::tcp::socket socket) {
         ++chunks_received;
     }
 
-    // 4. Verify size, finalize, ACK.
+    // 4. Verify size, root hash, finalize, ACK.
     if (bytes_received != manifest->file_size) {
         send_error(conn, proto::ErrorCode::ProtocolViolation,
                    "byte count mismatch (expected " +
@@ -209,6 +240,45 @@ bool Server::handle_session_(asio::ip::tcp::socket socket) {
         send_error(conn, proto::ErrorCode::ProtocolViolation, "chunk count mismatch");
         return false;
     }
+
+    proto::Hash actual_root_hash{};
+    if (all_in_order) {
+        actual_root_hash = inorder_root_hasher.finalize();
+    } else {
+        // Out-of-order arrival — recompute by reading back from disk.
+        // (Triggered by phase-5 resume; phase 3 always takes the in-order path.)
+        Blake3Hasher disk_hasher;
+        if (!sink.flush()) {
+            send_error(conn, proto::ErrorCode::InternalError, sink.last_error());
+            return false;
+        }
+        std::ifstream fb(sink.partial_path(), std::ios::binary);
+        if (!fb.is_open()) {
+            send_error(conn, proto::ErrorCode::InternalError,
+                       "cannot reopen .partial for verification");
+            return false;
+        }
+        std::vector<std::byte> rb(64 * 1024);
+        while (fb.good()) {
+            fb.read(reinterpret_cast<char*>(rb.data()),
+                    static_cast<std::streamsize>(rb.size()));
+            const auto n = static_cast<size_t>(fb.gcount());
+            if (n > 0) disk_hasher.update(std::span<const std::byte>(rb.data(), n));
+        }
+        actual_root_hash = disk_hasher.finalize();
+    }
+
+    if (actual_root_hash != manifest->root_hash) {
+        send_error(conn, proto::ErrorCode::HashMismatch,
+                   "root hash mismatch (manifest)");
+        return false;
+    }
+    if (actual_root_hash != client_final_root_hash) {
+        send_error(conn, proto::ErrorCode::HashMismatch,
+                   "root hash mismatch (COMPLETE)");
+        return false;
+    }
+
     if (!sink.flush() || !sink.finalize()) {
         send_error(conn, proto::ErrorCode::InternalError, sink.last_error());
         return false;
