@@ -16,17 +16,23 @@ A production-grade C++20 utility for transferring files of arbitrary size over T
 - **Cross-platform**: single C++20 codebase, Linux / Windows / macOS; CI cross-compiles to ARM64 Linux (Jetson target)
 - **Production hygiene**: 63 tests (unit + integration + fault-injection), ASan + UBSan in CI, `-Werror` gate
 
-## Quick start (Linux / WSL)
+## Quick start
+
+| Platform | Toolchain | OpenSSL | Notes |
+| --- | --- | --- | --- |
+| **Linux (Ubuntu/Debian)** | `apt install build-essential ninja-build cmake pkg-config libssl-dev` | distro package | primary platform |
+| **Linux (Fedora/RHEL)** | `dnf install gcc-c++ ninja-build cmake openssl-devel` | distro package | |
+| **macOS** | `brew install ninja cmake openssl@3 pkg-config` | Homebrew (keg-only — see below) | |
+| **Windows native** | Visual Studio 2022 Build Tools (MSVC + Windows SDK) + CMake + Ninja | `vcpkg install openssl:x64-windows` | Developer Command Prompt or Developer PowerShell |
+| **Windows via WSL** | Same as Linux (Ubuntu) | distro package | easiest if WSL2 is already installed |
+
+### Linux / WSL
 
 ```bash
-# 1. Toolchain
 sudo apt install -y build-essential ninja-build cmake pkg-config libssl-dev
 
-# 2. Build
 cmake --preset release
 cmake --build --preset release
-
-# 3. Run the test suite (63 tests)
 ctest --preset release
 
 # 4. Generate test certificates and try a TLS transfer
@@ -55,6 +61,50 @@ For local-only tinkering without TLS:
 ./build/release/src/ftx serve --listen 127.0.0.1:9000 --root /tmp/recv --insecure &
 ./build/release/src/ftx send  127.0.0.1:9000 myfile.bin --out delivered.bin --insecure
 ```
+
+### macOS
+
+OpenSSL is keg-only on Homebrew, so CMake needs a hint:
+
+```bash
+brew install ninja cmake openssl@3 pkg-config
+export OPENSSL_ROOT_DIR="$(brew --prefix openssl@3)"
+export PKG_CONFIG_PATH="$(brew --prefix openssl@3)/lib/pkgconfig"
+
+cmake --preset release
+cmake --build --preset release
+ctest --preset release
+```
+
+### Windows (native, MSVC + vcpkg)
+
+From a **Developer PowerShell for VS 2022** (or Developer Command Prompt — these set up the MSVC environment):
+
+```powershell
+# 1. One-time: install vcpkg + OpenSSL
+git clone https://github.com/microsoft/vcpkg C:\vcpkg
+C:\vcpkg\bootstrap-vcpkg.bat
+C:\vcpkg\vcpkg install openssl:x64-windows
+
+# 2. Configure with the vcpkg toolchain
+cmake -S . -B build\release -G "Visual Studio 17 2022" -A x64 `
+    -DCMAKE_TOOLCHAIN_FILE=C:\vcpkg\scripts\buildsystems\vcpkg.cmake `
+    -DVCPKG_TARGET_TRIPLET=x64-windows
+
+# 3. Build + test
+cmake --build build\release --config Release --parallel
+ctest --test-dir build\release -C Release --output-on-failure
+```
+
+Notes for Windows:
+
+- **Bash dependency for tests**: the test-cert generator script is bash. Git for Windows (preinstalled on most dev boxes; install via `winget install Git.Git`) puts `bash.exe` and `openssl.exe` on PATH so the script runs unmodified during the CMake configure/build step. If you don't have Git for Windows, the cert step fails silently — set `-DFTX_BUILD_TESTS=OFF` to skip the tests, or generate certs manually and pass `--tls-cert/--tls-key/--tls-ca` to the binary.
+- **Atomic rename**: NTFS rejects `rename` onto an existing destination; `FileSink::finalize()` already retries with explicit `remove + rename`.
+- **Sparse pre-sizing**: NTFS doesn't have ext4-style sparse files; the receiver's `.partial` is zero-filled instead. Functionally equivalent, just not disk-cheap.
+
+### Windows (via WSL2 — simplest)
+
+If you already have WSL2 with Ubuntu, the Linux/WSL path above runs unmodified. The binary is a native Linux ELF executable inside WSL; from Windows-side tools the build artifacts live under `\\wsl$\Ubuntu\home\<you>\...`.
 
 ## Build matrix
 
