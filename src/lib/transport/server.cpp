@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "ftx/io/file_sink.hpp"
+#include "ftx/io/resume_state.hpp"
 #include "ftx/proto/messages.hpp"
 #include "ftx/transport/connection.hpp"
 #include "ftx/util/blake3.hpp"
@@ -169,9 +170,50 @@ bool Server::handle_session_(asio::ip::tcp::socket socket) {
     spdlog::info("session: receiving \"{}\" → {} ({} bytes, {} chunks)",
                  manifest->path, dest.string(), manifest->file_size, manifest->chunk_count);
 
+    // ---- Resume support: load .ftxstate, reconcile against manifest ----
+    auto state_path = dest;
+    state_path += ".ftxstate";
+
+    // Manifest identity = BLAKE3(encoded manifest payload). Stable across
+    // sessions for the same logical transfer.
+    io::ResumeState::ManifestId mid{};
+    {
+        const auto enc = proto::encode_manifest(*manifest);
+        const auto h   = blake3(enc);
+        std::copy(h.begin(), h.end(), mid.begin());
+    }
+
+    io::ResumeState state;
+    bool            resume_active = false;
+    {
+        io::ResumeState loaded;
+        if (io::ResumeState::load(state_path, loaded) &&
+            loaded.manifest_id() == mid &&
+            loaded.chunk_count() == manifest->chunk_count) {
+            state         = std::move(loaded);
+            resume_active = true;
+            spdlog::info("session: resuming with {} of {} chunks already received",
+                         manifest->chunk_count - state.missing().size(),
+                         manifest->chunk_count);
+        } else {
+            // Either no state file, mismatched manifest, or differing chunk
+            // count — restart from scratch. Wipe any stale .ftxstate.
+            io::ResumeState::remove(state_path);
+            state = io::ResumeState(mid, manifest->chunk_count);
+        }
+    }
+
     io::FileSink sink(dest);
-    if (!sink.open(manifest->file_size)) {
+    if (!sink.open(manifest->file_size, /*resume_existing=*/resume_active)) {
         send_error(conn, proto::ErrorCode::InternalError, sink.last_error());
+        return false;
+    }
+
+    // ---- Send REQ_CHUNKS with the indices we still need ----
+    proto::ReqChunksMsg req;
+    req.indices = state.missing();
+    if (!conn.send_frame(proto::FrameType::ReqChunks, proto::encode_req_chunks(req))) {
+        spdlog::warn("session: send REQ_CHUNKS failed: {}", conn.last_error());
         return false;
     }
 
@@ -183,7 +225,7 @@ bool Server::handle_session_(asio::ip::tcp::socket socket) {
     uint64_t      bytes_received  = 0;
     uint32_t      chunks_received = 0;
     Blake3Hasher  inorder_root_hasher;
-    bool          all_in_order    = true;
+    bool          all_in_order    = !resume_active;  // resume always re-hashes from disk
     uint32_t      next_expected   = 0;
     proto::Hash   client_final_root_hash{};
     while (true) {
@@ -246,21 +288,37 @@ bool Server::handle_session_(asio::ip::tcp::socket socket) {
             send_error(conn, proto::ErrorCode::InternalError, sink.last_error());
             return false;
         }
+        state.mark_received(chunk->index);
+        // Persist resume state every chunk so a crash mid-flight doesn't lose
+        // ground. For very small chunks this could become a hotspot — phase 6
+        // can batch persistence.
+        (void)state.save(state_path);
+
         bytes_received += chunk->data.size();
         ++chunks_received;
     }
 
     // 4. Verify size, root hash, finalize, ACK.
-    if (bytes_received != manifest->file_size) {
-        send_error(conn, proto::ErrorCode::ProtocolViolation,
-                   "byte count mismatch (expected " +
-                       std::to_string(manifest->file_size) + ", got " +
-                       std::to_string(bytes_received) + ")");
-        return false;
-    }
-    if (chunks_received != manifest->chunk_count) {
-        send_error(conn, proto::ErrorCode::ProtocolViolation, "chunk count mismatch");
-        return false;
+    // (For a resumed transfer, only the missing chunks are accounted in this
+    //  session; we instead verify the full chunk inventory is present.)
+    if (resume_active) {
+        if (!state.complete()) {
+            send_error(conn, proto::ErrorCode::ProtocolViolation,
+                       "transfer ended with chunks still missing");
+            return false;
+        }
+    } else {
+        if (bytes_received != manifest->file_size) {
+            send_error(conn, proto::ErrorCode::ProtocolViolation,
+                       "byte count mismatch (expected " +
+                           std::to_string(manifest->file_size) + ", got " +
+                           std::to_string(bytes_received) + ")");
+            return false;
+        }
+        if (chunks_received != manifest->chunk_count) {
+            send_error(conn, proto::ErrorCode::ProtocolViolation, "chunk count mismatch");
+            return false;
+        }
     }
 
     proto::Hash actual_root_hash{};
@@ -305,6 +363,7 @@ bool Server::handle_session_(asio::ip::tcp::socket socket) {
         send_error(conn, proto::ErrorCode::InternalError, sink.last_error());
         return false;
     }
+    io::ResumeState::remove(state_path);
 
     const proto::AckMsg ack{.last_index = (manifest->chunk_count == 0)
                                               ? 0

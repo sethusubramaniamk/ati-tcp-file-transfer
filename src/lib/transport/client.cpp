@@ -124,10 +124,28 @@ bool Client::send(const std::string& host,
         return false;
     }
 
-    // 5. CHUNK loop — second pass over the file, attaching the precomputed
-    //    hash to each frame.
+    // 4b. Wait for REQ_CHUNKS — receiver tells us which indices to send.
+    auto req_frame = conn.recv_frame();
+    if (!req_frame || req_frame->header.type != proto::FrameType::ReqChunks) {
+        last_error_ = "recv REQ_CHUNKS: " +
+                      (req_frame ? "unexpected frame type" : conn.last_error());
+        return false;
+    }
+    const auto req = proto::decode_req_chunks(req_frame->payload);
+    if (!req) {
+        last_error_ = "decode REQ_CHUNKS: malformed";
+        return false;
+    }
+
+    // 5. CHUNK loop — send only the chunks the receiver asked for. For a
+    //    fresh transfer this is the full range [0, chunk_count); on resume it
+    //    is just the missing indices.
     std::vector<std::byte> buf(chunk_size);
-    for (uint32_t i = 0; i < chunk_count; ++i) {
+    for (const uint32_t i : req->indices) {
+        if (i >= chunk_count) {
+            last_error_ = "REQ_CHUNKS: index " + std::to_string(i) + " out of range";
+            return false;
+        }
         const uint64_t offset = static_cast<uint64_t>(i) * chunk_size;
         size_t         n      = 0;
         if (!src.read_at(offset, buf, &n)) {

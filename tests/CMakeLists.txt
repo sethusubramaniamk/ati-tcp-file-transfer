@@ -10,6 +10,7 @@ add_executable(ftx_unit_tests
     proto/frame_test.cpp
     proto/decoder_test.cpp
     proto/messages_test.cpp
+    io/resume_state_test.cpp
 )
 
 target_link_libraries(ftx_unit_tests

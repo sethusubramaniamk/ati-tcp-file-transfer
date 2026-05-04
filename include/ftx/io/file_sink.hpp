@@ -16,7 +16,10 @@ class FileSink {
     explicit FileSink(std::filesystem::path final_path);
 
     // Open the .partial file and pre-size it to `total_size`.
-    [[nodiscard]] bool open(uint64_t total_size);
+    // When `resume_existing` is true, an existing .partial of size >=
+    // total_size is preserved (no truncation); a smaller or absent file falls
+    // back to a fresh pre-sized creation.
+    [[nodiscard]] bool open(uint64_t total_size, bool resume_existing = false);
 
     [[nodiscard]] bool is_open() const noexcept { return stream_.is_open(); }
 

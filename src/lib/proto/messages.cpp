@@ -176,6 +176,33 @@ std::optional<ManifestMsg> decode_manifest(std::span<const std::byte> payload) {
 }
 
 // ---------------------------------------------------------------------------
+// ReqChunks: { count u32, indices[count] u32 }
+// ---------------------------------------------------------------------------
+std::vector<std::byte> encode_req_chunks(const ReqChunksMsg& m) {
+    std::vector<std::byte> out;
+    out.reserve(4 + m.indices.size() * 4);
+    append_u32(out, static_cast<uint32_t>(m.indices.size()));
+    for (const auto idx : m.indices) {
+        append_u32(out, idx);
+    }
+    return out;
+}
+
+std::optional<ReqChunksMsg> decode_req_chunks(std::span<const std::byte> payload) {
+    Cursor       c(payload);
+    ReqChunksMsg m{};
+    uint32_t     count = 0;
+    if (!c.take_u32(count)) return std::nullopt;
+    if (count > c.remaining() / 4) return std::nullopt;  // bound check
+    m.indices.resize(count);
+    for (uint32_t i = 0; i < count; ++i) {
+        if (!c.take_u32(m.indices[i])) return std::nullopt;
+    }
+    if (c.remaining() != 0) return std::nullopt;
+    return m;
+}
+
+// ---------------------------------------------------------------------------
 // Chunk: { index u32, hash[32], data[remainder] }
 // ---------------------------------------------------------------------------
 std::vector<std::byte> encode_chunk(const ChunkMsg& m) {
